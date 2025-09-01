@@ -91,4 +91,20 @@ Canais: Fpz–Cz e Pz–Oz
 | `event_marker_slope_1hz` | Tendência (aumento/diminuição). |
 | `event_marker_rms_1hz`   | Intensidade média dos eventos.  |
 
+
+## API de Download do Sleep-EDF
+
+A API foi construída com **FastAPI** para facilitar o download automático dos arquivos brutos do dataset **Sleep-EDF** diretamente do repositório [PhysioNet](https://physionet.org/).
+
+### 🚀 Como rodar a API
+
+```bash
+# 1. Instale os requisitos
+pip install -r api/requirements.txt
+
+# 2. Execute o servidor
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload --reload-exclude "datalake/*" --lifespan on
+
+# 3. Acesse a documentação interativa (Swagger)
+http://127.0.0.1:8000/docs
 ---
