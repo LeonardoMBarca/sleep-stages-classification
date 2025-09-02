@@ -23,8 +23,10 @@ def pair_psg_hyp(logger, root_dir: str) -> List[Tuple[str, str, str, str]]:
             cands = sorted(glob.glob(os.path.join(folder, f"{prefix6}*-Hypnogram.edf")))
             if not cands:
                 cands = sorted(glob.glob(os.path.join(folder, f"{stem}-Hypnogram.edf")))
+
             if not cands:
                 logger.log(f"[PAIR_PSG_HYP] No hypnogram for {base}")
+
                 continue
 
             hyp = cands[0]
@@ -33,15 +35,19 @@ def pair_psg_hyp(logger, root_dir: str) -> List[Tuple[str, str, str, str]]:
             if m:
                 subject_id = f"{m.group(1).upper()}{m.group(2)}"
                 night_id = m.group(3).upper() if m.group(3) else "N0"
+
             else:
                 subject_id, night_id = stem, "N0"
 
             pairs.append((psg, hyp, subject_id, night_id))
 
         logger.log(f"[PAIR_PSG_HYP] Found pairs: {len(pairs)}")
+
         return pairs
+    
     except Exception as e:
         logger.log(f"[PAIR_PSG_HYP] Fatal: {e}", "error")
+        
         return []
 
 

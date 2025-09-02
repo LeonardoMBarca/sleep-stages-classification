@@ -1,20 +1,45 @@
 import re
 from typing import List, Optional
-from rich.progress import (
-    Progress, TextColumn, BarColumn, TaskProgressColumn, TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn
-)
-
-def _make_progress() -> Progress:
-    """Create a standard Progress instance for console logging."""
-    return Progress(
-        TextColumn("[bold blue]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        TimeRemainingColumn(),
-        transient=False
+try:
+    from rich.progress import (
+        Progress, TextColumn, BarColumn, TaskProgressColumn,
+        TimeElapsedColumn, TimeRemainingColumn, MofNCompleteColumn
     )
+    def _make_progress():
+        return Progress(
+            TextColumn("[bold blue]{task.description}"),
+            BarColumn(),
+            TaskProgressColumn(),
+            MofNCompleteColumn(),
+            TimeElapsedColumn(),
+            TimeRemainingColumn(),
+            transient=False,
+        )
+except Exception:
+    from contextlib import contextmanager
+    @contextmanager
+    def _make_progress():
+        class Dummy:
+            def add_task(self, *a, **k): return 0
+            def update(self, *a, **k): pass
+        yield Dummy()
+
+def _process_one_pair(args):
+    """
+    Runs in a child process: processes 1 pair (PSG, HYP).
+    Does not use a progress bar to avoid cluttering stdout.
+    Creates its own (lightweight) Logger within the worker.
+    """
+    psg, hyp, sid, nid = args
+    try:
+        from labeler import process_record as _proc
+        from logger import Logger as _Logger
+        _logger = _Logger()
+        df = _proc(_logger, psg, hyp, subject_id=sid, night_id=nid, progress=None)
+        return sid, df 
+    except Exception as e:
+        
+        return sid, None
 
 def slugify(s: str) -> str:
     """Normalizes a channel label to something stable: lowercase, alphanumeric+underscore."""
