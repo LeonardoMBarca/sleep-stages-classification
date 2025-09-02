@@ -1,0 +1,6 @@
+logger
+numpy
+polars
+pyedflib
+rich
+scipy
