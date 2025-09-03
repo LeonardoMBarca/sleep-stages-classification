@@ -9,6 +9,7 @@ from utils.utils import slugify, normspace
 # Each epoch has 30 seconds (R&K manual).
 EPOCH_LEN = 30.0
 
+
 def pair_psg_hyp(logger, root_dir: str) -> List[Tuple[str, str, str, str]]:
     """Search for pairs of PSG and Hypnogram files in the given root directory."""
     logger.log(f"[PAIR_PSG_HYP] Searching pairs in: {root_dir}")
@@ -23,31 +24,34 @@ def pair_psg_hyp(logger, root_dir: str) -> List[Tuple[str, str, str, str]]:
             cands = sorted(glob.glob(os.path.join(folder, f"{prefix6}*-Hypnogram.edf")))
             if not cands:
                 cands = sorted(glob.glob(os.path.join(folder, f"{stem}-Hypnogram.edf")))
-
             if not cands:
                 logger.log(f"[PAIR_PSG_HYP] No hypnogram for {base}")
-
                 continue
 
             hyp = cands[0]
 
-            m = re.match(r"^(SC|ST)(\d{4})([A-Z]\d)?", stem, flags=re.IGNORECASE)
-            if m:
-                subject_id = f"{m.group(1).upper()}{m.group(2)}"
-                night_id = m.group(3).upper() if m.group(3) else "N0"
-
+            m_sc = re.match(r"^SC4(?P<ss>\d{2})(?P<night>[12])[A-Z]\d$", stem, flags=re.IGNORECASE)
+            m_st = re.match(r"^ST7(?P<ss>\d{2})(?P<night>[12])[A-Z]\d$", stem, flags=re.IGNORECASE)
+            if m_sc:
+                subject_id = f"SC4{m_sc.group('ss')}"
+                night_id = f"N{m_sc.group('night')}"
+            elif m_st:
+                subject_id = f"ST7{m_st.group('ss')}"
+                night_id = f"N{m_st.group('night')}"
             else:
-                subject_id, night_id = stem, "N0"
+                m_generic = re.match(r"^(SC|ST)(\d{4,})([A-Z]\d)?$", stem, flags=re.IGNORECASE)
+                if m_generic:
+                    subject_id = f"{m_generic.group(1).upper()}{m_generic.group(2)}"
+                    night_id = "N1"
+                else:
+                    subject_id, night_id = stem, "N1"
 
             pairs.append((psg, hyp, subject_id, night_id))
 
         logger.log(f"[PAIR_PSG_HYP] Found pairs: {len(pairs)}")
-
         return pairs
-    
     except Exception as e:
         logger.log(f"[PAIR_PSG_HYP] Fatal: {e}", "error")
-        
         return []
 
 
@@ -77,7 +81,6 @@ def read_hyp_epochs_aligned(logger, psg_file: str, hyp_file: str, epoch_len: flo
                 if not t or (d is None) or (float(d) <= 0):
                     ignored += 1
                     continue
-
                 if "SLEEP STAGE" in t:
                     s = None
                     if t.endswith(" W"): s = "W"
@@ -88,7 +91,6 @@ def read_hyp_epochs_aligned(logger, psg_file: str, hyp_file: str, epoch_len: flo
                     if s is None:
                         ignored += 1
                         continue
-
                     starts.append(float(o) + offset_sec)
                     ends.append(float(o) + float(d) + offset_sec)
                     stages.append(s)
@@ -135,7 +137,6 @@ def read_hyp_epochs_aligned(logger, psg_file: str, hyp_file: str, epoch_len: flo
 
         logger.log(f"[READ_HYP_EPOCHS_ALIGNED] Labeled epochs: {df.height}")
         return df
-
     except Exception as e:
         logger.log(f"[READ_HYP_EPOCHS_ALIGNED] Fatal: {e}", "error")
         return pl.DataFrame({"epoch_idx": [], "t0_sec": [], "stage": []})
@@ -164,7 +165,6 @@ def read_and_epoch_channel(logger, reader: pyedflib.EdfReader, ch_idx: int, epoc
         n_epochs = len(x) // n_target
         x = x[: n_epochs * n_target]
         return x.reshape(n_epochs, n_target)
-
     except Exception as e:
         logger.log(f"[READ_AND_EPOCH_CHANNEL] Failed: {e}", "warning")
         return np.empty((0, int(round(epoch_len * expected_fs))), dtype=np.float32)
@@ -217,7 +217,6 @@ def read_psg_epochs(logger, psg_file: str, epoch_len: float = EPOCH_LEN) -> Tupl
 
         logger.log(f"[READ_PSG_EPOCHS] n_epochs (common) after cut: {n_epochs} | high_ch={len(high)} | low_ch={len(low)}")
         return high, low, {"high": 100.0, "low": 1.0}
-
     except Exception as e:
         logger.log(f"[READ_PSG_EPOCHS] Fatal: {e}", "error")
         return {}, {}, {}
