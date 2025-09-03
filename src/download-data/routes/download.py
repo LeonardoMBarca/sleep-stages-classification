@@ -30,7 +30,7 @@ async def download(
     ignore_hash: bool = Query(False),
     limit: Optional[int] = Query(None, ge=1),
     sync: bool = Query(True),
-    workers: Optional[int] = Query(None, ge=1, le=32),
+    workers: Optional[int] = Query(None, ge=1, le=8),
     batch_size: Optional[int] = Query(None, ge=1),
     round_retries: int = Query(3, ge=0, le=8),
 ) -> Dict[str, Any]:
