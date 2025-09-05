@@ -86,7 +86,6 @@ def _spec_edge_freq(psd: np.ndarray, freqs: np.ndarray, mask: np.ndarray, q: flo
     cumsum = np.cumsum(p, axis=1)
     total = cumsum[:, -1][:, None]
     target = q * total
-    # idx of first bin where cumsum >= target
     idx = (cumsum >= target).argmax(axis=1)
     return f[idx]
 
@@ -103,7 +102,7 @@ def _aperiodic_slope(psd: np.ndarray, freqs: np.ndarray, fmin: float = 2.0, fmax
     slopes = np.empty(psd.shape[0], dtype=float)
     for i in range(psd.shape[0]):
         try:
-            b, a = np.polyfit(xf, y[i], 1)  # y ≈ a + b*x
+            b, a = np.polyfit(xf, y[i], 1) 
             slopes[i] = b
         except Exception:
             slopes[i] = 0.0
@@ -127,12 +126,10 @@ def _features_high_channel_batch(
             freqs, psd = _welch_channel_batch(x_epochs, fs, nperseg=nseg)
             masks, mask_tot, df = _band_masks_and_df(freqs, bands)
 
-            # potência total (0.5–30 Hz)
             total_pow = (psd[:, mask_tot].sum(axis=1) * df) if mask_tot.any() else np.zeros(psd.shape[0])
 
             suffix = f"_{nseg}"
 
-            # potências por banda + relativas + log-potência + pico de frequência
             band_pows: Dict[str, np.ndarray] = {}
             for band, m in masks.items():
                 bp = (psd[:, m].sum(axis=1) * df) if m.any() else np.zeros(psd.shape[0])
@@ -140,10 +137,8 @@ def _features_high_channel_batch(
                 out[f"{ch_name}_{band}_pow{suffix}"] = bp.astype(float)
                 out[f"{ch_name}_{band}_relpow{suffix}"] = _safe_div(bp, total_pow).astype(float)
                 out[f"{ch_name}_{band}_logpow{suffix}"] = np.log10(bp + 1e-12).astype(float)
-                # pico de frequência dentro da banda
                 out[f"{ch_name}_{band}_peakfreq{suffix}"] = _spec_peak_freq(psd, freqs, m).astype(float)
 
-            # razões de bandas clássicas
             try:
                 d, t, a, s, b = [band_pows.get(k, np.zeros_like(total_pow)) for k in ("delta","theta","alpha","sigma","beta")]
                 out[f"{ch_name}_delta_theta_ratio{suffix}"] = _safe_div(d, t).astype(float)
@@ -155,7 +150,6 @@ def _features_high_channel_batch(
             except Exception as e:
                 logger.log(f"[RATIOS] {ch_name} failed ({nseg}): {e}", "warning")
 
-            # SEF95, median freq, entropia espectral e slope 1/f
             try:
                 out[f"{ch_name}_sef95{suffix}"]      = _spec_edge_freq(psd, freqs, mask_tot, 0.95).astype(float)
                 out[f"{ch_name}_medfreq{suffix}"]    = _median_freq(psd, freqs, mask_tot).astype(float)
@@ -164,7 +158,6 @@ def _features_high_channel_batch(
             except Exception as e:
                 logger.log(f"[SPECTRAL_SUMMARY] {ch_name} failed ({nseg}): {e}", "warning")
 
-        # domínio do tempo (independente de nperseg)
         x_s = np.nan_to_num(x_epochs - np.nanmean(x_epochs, axis=1, keepdims=True))
         out[f"{ch_name}_rms"] = np.sqrt((x_s**2).mean(axis=1)).astype(float)
         out[f"{ch_name}_var"] = x_s.var(axis=1).astype(float)
@@ -202,7 +195,6 @@ def _features_low_channel_batch(logger, ch_name: str, x_epochs: np.ndarray, fs_l
         q25  = np.percentile(x0, 25, axis=1).astype(float)
         iqr  = (q75 - q25).astype(float)
 
-        # extras úteis
         mad   = np.median(np.abs(x0 - med[:, None]), axis=1).astype(float)
         p01   = np.percentile(x0, 1, axis=1).astype(float)
         p10   = np.percentile(x0, 10, axis=1).astype(float)
@@ -214,7 +206,6 @@ def _features_low_channel_batch(logger, ch_name: str, x_epochs: np.ndarray, fs_l
         except Exception:
             kur = np.zeros(x0.shape[0]); skw = np.zeros(x0.shape[0])
 
-        # diferenças e zero-cross (limitado a 1 Hz, mas ainda sinaliza instabilidade)
         if x0.shape[1] > 1:
             diff = np.diff(x0, axis=1)
             diff_rms = np.sqrt((diff**2).mean(axis=1)).astype(float)
@@ -243,10 +234,8 @@ def _features_low_channel_batch(logger, ch_name: str, x_epochs: np.ndarray, fs_l
             f"{ch_name}_zcr_1hz": zcr,
         }
 
-        # métricas de qualidade específicas por canal
         ch_lower = ch_name.lower()
         if "resp_oronasal" in ch_lower:
-            # clipping típico em ±900
             clip = (np.abs(x0) >= 900).mean(axis=1).astype(float)
             out[f"{ch_name}_clip_frac_1hz"] = clip
         if "temp_rectal" in ch_lower:
@@ -347,9 +336,7 @@ def process_record(logger, psg_file: str, hyp_file: str, subject_id: str, night_
 
         y_small = y_df.head(n_epochs).select(["epoch_idx", "t0_sec", "stage"])
 
-        # --- contexto temporal: TSO (minutos) ---
         try:
-            # primeiro epoch != W define início do sono
             sleep_onset_idx = int(y_df.filter(pl.col("stage") != "W").select("epoch_idx").min().item()) if y_df.filter(pl.col("stage") != "W").height > 0 else None
         except Exception:
             sleep_onset_idx = None
