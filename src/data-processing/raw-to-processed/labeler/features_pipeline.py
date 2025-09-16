@@ -1,11 +1,12 @@
-import os
+import os, re
 import numpy as np
 import polars as pl
+from pathlib import Path
 
 from typing import Dict, Tuple, Optional, Any
 from scipy.signal import welch
 from scipy.stats import kurtosis, skew
-from utils import best_match_idx
+from utils import best_match_idx, slugify
 from .io_edf import EPOCH_LEN, read_hyp_epochs_aligned, read_psg_epochs
 
 # Classic bands of EEG (Hz)
@@ -17,11 +18,15 @@ EEG_BANDS = {
     "beta":  (16.0, 30.0),
 }
 
-# Canonical channel hints (high / low)
+# Canonical channel hints (high / mid / low)
 CANON_HIGH_HINT = {
     "EEG_Fpz_Cz": ["EEG Fpz-Cz", "Fpz-Cz", "EEG FPZ-CZ"],
     "EEG_Pz_Oz":  ["EEG Pz-Oz", "Pz-Oz", "EEG PZ-OZ"],
     "EOG":        ["EOG horizontal", "Horizontal EOG", "EOG"],
+    "EMG_submental": ["EMG submental", "Submental EMG", "EMG"]
+}
+CANON_MID_HINT = {
+    "Event_marker": ["Event marker", "Marker", "Event"]
 }
 CANON_LOW_HINT = {
     "EMG_submental": ["EMG submental", "Submental EMG", "EMG"],
@@ -29,6 +34,108 @@ CANON_LOW_HINT = {
     "Temp_rectal":   ["Temp rectal", "Rectal Temp", "Temperature"],
     "Event_marker":  ["Event marker", "Marker", "Event"],
 }
+
+_SUBJECT_INFO_CACHE = {}
+
+def _load_subject_info(root_dir: str) -> Dict[str, Dict[str, Any]]:
+    """Load subject info from CSV files and cache it."""
+    global _SUBJECT_INFO_CACHE
+    
+    if _SUBJECT_INFO_CACHE:
+        return _SUBJECT_INFO_CACHE
+    
+    root_path = Path(root_dir)
+    subjects_dir = None
+    
+    for path in [root_path] + list(root_path.parents):
+        candidate = path / "subjects-info"
+        if candidate.exists():
+            subjects_dir = candidate
+            break
+    
+    if not subjects_dir:
+        for path in [root_path] + list(root_path.parents):
+            candidate = path / "datalake" / "raw" / "subjects-info"
+            if candidate.exists():
+                subjects_dir = candidate
+                break
+    
+    if not subjects_dir:
+        return {}
+    
+    subject_info = {}
+    
+    sc_file = subjects_dir / "SC-subjects.csv"
+    if sc_file.exists():
+        try:
+            sc_df = pl.read_csv(str(sc_file)).unique(subset=['subject'])
+            for row in sc_df.iter_rows(named=True):
+                subject_key = f"SC{row['subject']:04d}"
+                subject_info[subject_key] = {
+                    'age': row['age'],
+                    'sex': 'F' if row['sex'] == 1 else 'M'
+                }
+        except Exception as e:
+            print(f"Warning: Failed to load SC subjects: {e}")
+    
+    st_file = subjects_dir / "ST-subjects.csv"
+    if st_file.exists():
+        try:
+            st_df = pl.read_csv(str(st_file))
+            for row in st_df.iter_rows(named=True):
+                subject_key = f"ST{row['subject']:04d}"
+                subject_info[subject_key] = {
+                    'age': row['age'],
+                    'sex': 'F' if row['sex'] == 1 else 'M'
+                }
+        except Exception as e:
+            print(f"Warning: Failed to load ST subjects: {e}")
+    
+    _SUBJECT_INFO_CACHE = subject_info
+    return subject_info
+
+def _get_subject_demographics(subject_id: str, root_dir: str) -> Tuple[Optional[int], Optional[str]]:
+    subject_info = _load_subject_info(root_dir)
+
+    s = subject_id.upper()
+
+    if s in subject_info:
+        info = subject_info[s]
+        return info['age'], info['sex']
+
+    m_sc3 = re.match(r"^SC4(\d{2})(\d)$", s)   
+    m_sc2 = re.match(r"^SC4(\d{2})$", s) 
+    if m_sc3 or m_sc2:
+        ss = int((m_sc3 or m_sc2).group(1))    
+        for night in (1, 2):
+            num_part = 4000 + ss*1 + night  
+            csv_subject_num = num_part - 4001
+            key = f"SC{csv_subject_num:04d}"
+            if key in subject_info:
+                info = subject_info[key]
+                return info['age'], info['sex']
+        key = f"SC{ss:04d}"
+        if key in subject_info:
+            info = subject_info[key]
+            return info['age'], info['sex']
+
+    m_st3 = re.match(r"^ST7(\d{2})(\d)$", s)  
+    m_st2 = re.match(r"^ST7(\d{2})$", s)     
+    if m_st3 or m_st2:
+        ss = int((m_st3 or m_st2).group(1))
+        for night in (1, 2):
+            num_part = 7000 + ss*1 + night   
+            csv_subject_num = (num_part - 7001) // 10
+            key = f"ST{csv_subject_num:04d}"
+            if key in subject_info:
+                info = subject_info[key]
+                return info['age'], info['sex']
+        key = f"ST{ss:04d}"
+        if key in subject_info:
+            info = subject_info[key]
+            return info['age'], info['sex']
+
+    return None, None
 
 def _band_masks_and_df(freqs: np.ndarray, bands: Dict[str, Tuple[float, float]]):
     """Build boolean masks per band and frequency step for fast integration."""
@@ -181,8 +288,8 @@ def _features_high_channel_batch(
         out.update({f"{ch_name}_rms": zeros, f"{ch_name}_var": zeros})
         return out
 
-def _features_low_channel_batch(logger, ch_name: str, x_epochs: np.ndarray, fs_low: float):
-    """Compute time-domain statistics and quality metrics for all epochs of a low-FS channel (1 Hz)."""
+def _features_stats_channel_batch(logger, ch_name: str, x_epochs: np.ndarray, fs_stat: float, suffix: str):
+    """Time domain statistics for 'slow' signals (1 Hz, 10 Hz, ...)."""
     try:
         x0 = np.nan_to_num(np.asarray(x_epochs, dtype=np.float64))
         mean = x0.mean(axis=1).astype(float)
@@ -210,97 +317,137 @@ def _features_low_channel_batch(logger, ch_name: str, x_epochs: np.ndarray, fs_l
             diff = np.diff(x0, axis=1)
             diff_rms = np.sqrt((diff**2).mean(axis=1)).astype(float)
             zcr = ( (x0[:, 1:] * x0[:, :-1]) < 0 ).sum(axis=1).astype(float) / (x0.shape[1]-1)
+            slope = ((x0[:, -1] - x0[:, 0]) / ((x0.shape[1] - 1) / fs_stat)).astype(float)
         else:
             diff_rms = np.zeros(x0.shape[0], dtype=float)
             zcr = np.zeros(x0.shape[0], dtype=float)
+            slope = np.zeros(x0.shape[0], dtype=float)
 
         out = {
-            f"{ch_name}_mean_1hz": mean,
-            f"{ch_name}_std_1hz": std,
-            f"{ch_name}_min_1hz": mn,
-            f"{ch_name}_max_1hz": mx,
-            f"{ch_name}_rms_1hz": rms,
-            f"{ch_name}_slope_1hz": ((x0[:, -1] - x0[:, 0]) / ((x0.shape[1] - 1) / fs_low)).astype(float) if x0.shape[1] > 1 else np.zeros(x0.shape[0], dtype=float),
-            f"{ch_name}_median_1hz": med,
-            f"{ch_name}_iqr_1hz": iqr,
-            f"{ch_name}_mad_1hz": mad,
-            f"{ch_name}_p01_1hz": p01,
-            f"{ch_name}_p10_1hz": p10,
-            f"{ch_name}_p90_1hz": p90,
-            f"{ch_name}_p99_1hz": p99,
-            f"{ch_name}_kurtosis_1hz": kur,
-            f"{ch_name}_skewness_1hz": skw,
-            f"{ch_name}_diff_rms_1hz": diff_rms,
-            f"{ch_name}_zcr_1hz": zcr,
+            f"{ch_name}_mean_{suffix}": mean,
+            f"{ch_name}_std_{suffix}": std,
+            f"{ch_name}_min_{suffix}": mn,
+            f"{ch_name}_max_{suffix}": mx,
+            f"{ch_name}_rms_{suffix}": rms,
+            f"{ch_name}_slope_{suffix}": slope,
+            f"{ch_name}_median_{suffix}": med,
+            f"{ch_name}_iqr_{suffix}": iqr,
+            f"{ch_name}_mad_{suffix}": mad,
+            f"{ch_name}_p01_{suffix}": p01,
+            f"{ch_name}_p10_{suffix}": p10,
+            f"{ch_name}_p90_{suffix}": p90,
+            f"{ch_name}_p99_{suffix}": p99,
+            f"{ch_name}_kurtosis_{suffix}": kur,
+            f"{ch_name}_skewness_{suffix}": skw,
+            f"{ch_name}_diff_rms_{suffix}": diff_rms,
+            f"{ch_name}_zcr_{suffix}": zcr,
         }
 
         ch_lower = ch_name.lower()
         if "resp_oronasal" in ch_lower:
             clip = (np.abs(x0) >= 900).mean(axis=1).astype(float)
-            out[f"{ch_name}_clip_frac_1hz"] = clip
+            out[f"{ch_name}_clip_frac_{suffix}"] = clip
         if "temp_rectal" in ch_lower:
             oor = ((x0 < 30.0) | (x0 > 45.0)).mean(axis=1).astype(float)
-            out[f"{ch_name}_oor_frac_1hz"] = oor
+            out[f"{ch_name}_oor_frac_{suffix}"] = oor
 
         return out
 
     except Exception as e:
-        logger.log(f"[BATCH_LOW] Channel '{ch_name}' failed: {e}", "warning")
+        logger.log(f"[BATCH_STATS] Channel '{ch_name}' failed: {e}", "warning")
         n = x_epochs.shape[0]
         zeros = np.zeros(n, dtype=float)
-        return {
-            f"{ch_name}_mean_1hz": zeros,
-            f"{ch_name}_std_1hz": zeros,
-            f"{ch_name}_min_1hz": zeros,
-            f"{ch_name}_max_1hz": zeros,
-            f"{ch_name}_rms_1hz": zeros,
-            f"{ch_name}_slope_1hz": zeros,
-            f"{ch_name}_median_1hz": zeros,
-            f"{ch_name}_iqr_1hz": zeros,
-            f"{ch_name}_mad_1hz": zeros,
-            f"{ch_name}_p01_1hz": zeros,
-            f"{ch_name}_p10_1hz": zeros,
-            f"{ch_name}_p90_1hz": zeros,
-            f"{ch_name}_p99_1hz": zeros,
-            f"{ch_name}_kurtosis_1hz": zeros,
-            f"{ch_name}_skewness_1hz": zeros,
-            f"{ch_name}_diff_rms_1hz": zeros,
-            f"{ch_name}_zcr_1hz": zeros,
+        base = {
+            f"{ch_name}_mean_{suffix}": zeros, f"{ch_name}_std_{suffix}": zeros,
+            f"{ch_name}_min_{suffix}": zeros,  f"{ch_name}_max_{suffix}": zeros,
+            f"{ch_name}_rms_{suffix}": zeros,  f"{ch_name}_slope_{suffix}": zeros,
+            f"{ch_name}_median_{suffix}": zeros, f"{ch_name}_iqr_{suffix}": zeros,
+            f"{ch_name}_mad_{suffix}": zeros,  f"{ch_name}_p01_{suffix}": zeros,
+            f"{ch_name}_p10_{suffix}": zeros,  f"{ch_name}_p90_{suffix}": zeros,
+            f"{ch_name}_p99_{suffix}": zeros,  f"{ch_name}_kurtosis_{suffix}": zeros,
+            f"{ch_name}_skewness_{suffix}": zeros, f"{ch_name}_diff_rms_{suffix}": zeros,
+            f"{ch_name}_zcr_{suffix}": zeros,
         }
+        return base
 
-def process_record(logger, psg_file: str, hyp_file: str, subject_id: str, night_id: str, progress: Optional[Any] = None) -> pl.DataFrame:
-    """Process one PSG/Hyp pair into a tabular Polars DataFrame with epoch features and labels."""
+def _features_low_channel_batch(logger, ch_name: str, x_epochs: np.ndarray, fs_low: float):
+    return _features_stats_channel_batch(logger, ch_name, x_epochs, fs_stat=fs_low, suffix="1hz")
+
+def _features_mid_channel_batch(logger, ch_name: str, x_epochs: np.ndarray, fs_mid: float):
+    return _features_stats_channel_batch(logger, ch_name, x_epochs, fs_stat=fs_mid, suffix="10hz")
+
+def process_record(
+    logger,
+    psg_file: str,
+    hyp_file: str,
+    subject_id: str,
+    night_id: str,
+    progress: Optional[Any] = None,
+    root_dir: Optional[str] = None
+) -> pl.DataFrame:
+    """
+Processes a PSG/Hyp pair into a DataFrame (Polars) with features per epoch and labels.
+- Channel buckets: 100 Hz (high), 10 Hz (mid), 1 Hz (low)
+- Canonical hints for stable names; fallback includes everything left (no duplication)
+- Spectrals only at 100 Hz; time statistics at 10 Hz and 1 Hz
+    """
     logger.log(f"[PROCESS_RECORD] Processing {os.path.basename(psg_file)} | {os.path.basename(hyp_file)}")
     try:
         y_df = read_hyp_epochs_aligned(logger, psg_file, hyp_file, epoch_len=EPOCH_LEN)
-        high_all, low_all, fs_map = read_psg_epochs(logger, psg_file, epoch_len=EPOCH_LEN)
-        if not high_all and not low_all:
+
+        high_all, mid_all, low_all, fs_map = read_psg_epochs(logger, psg_file, epoch_len=EPOCH_LEN)
+        if not high_all and not mid_all and not low_all:
             logger.log("[PROCESS_RECORD] No channels found.")
             return pl.DataFrame()
 
-        high_keys, low_keys = list(high_all.keys()), list(low_all.keys())
-        canon_high, canon_low = {}, {}
+        canon_high, canon_mid, canon_low = {}, {}, {}
+        used_high_real, used_mid_real, used_low_real = set(), set(), set()
 
         for cname, clist in CANON_HIGH_HINT.items():
-            idx = best_match_idx(high_keys, clist)
+            idx = best_match_idx(list(high_all.keys()), clist)
             if idx is not None:
-                real = high_keys[idx]
+                real = list(high_all.keys())[idx]
                 logger.log(f"[PROCESS_RECORD] Canonical HIGH: {cname} <- {real}")
                 canon_high[cname] = high_all[real]
+                used_high_real.add(real)
 
         for cname, clist in CANON_LOW_HINT.items():
-            idx = best_match_idx(low_keys, clist)
+            idx = best_match_idx(list(low_all.keys()), clist)
             if idx is not None:
-                real = low_keys[idx]
+                real = list(low_all.keys())[idx]
                 logger.log(f"[PROCESS_RECORD] Canonical LOW:  {cname} <- {real}")
                 canon_low[cname] = low_all[real]
+                used_low_real.add(real)
 
-        if not canon_high:
-            canon_high = high_all
-        if not canon_low:
-            canon_low = low_all
+        for cname, clist in (CANON_MID_HINT if 'CANON_MID_HINT' in globals() else {}).items():
+            idx = best_match_idx(list(mid_all.keys()), clist)
+            if idx is not None:
+                real = list(mid_all.keys())[idx]
+                logger.log(f"[PROCESS_RECORD] Canonical MID:  {cname} <- {real}")
+                canon_mid[cname] = mid_all[real]
+                used_mid_real.add(real)
 
-        n_x = min([v.shape[0] for v in canon_high.values()] + [v.shape[0] for v in canon_low.values()] if (canon_high or canon_low) else [0])
+        for real, arr in high_all.items():
+            if real in used_high_real:
+                continue
+            canon_high[real] = arr
+
+        for real, arr in mid_all.items():
+            if real in used_mid_real:
+                continue
+            canon_mid[real] = arr
+
+        for real, arr in low_all.items():
+            if real in used_low_real:
+                continue
+            canon_low[real] = arr
+
+        n_x = min(
+            [v.shape[0] for v in canon_high.values()] +
+            [v.shape[0] for v in canon_mid.values()]  +
+            [v.shape[0] for v in canon_low.values()]
+            or [0]
+        )
         n_epochs = min(n_x, y_df.height)
         logger.log(f"[PROCESS_RECORD] n_epochs={n_epochs} (X={n_x}, y={y_df.height})")
         if n_epochs == 0:
@@ -309,7 +456,7 @@ def process_record(logger, psg_file: str, hyp_file: str, subject_id: str, night_
         task_id = None
         if progress is not None and hasattr(progress, "add_task"):
             try:
-                total_steps = max(1, len(canon_high) + len(canon_low))
+                total_steps = max(1, len(canon_high) + len(canon_mid) + len(canon_low))
                 task_id = progress.add_task(f"Features {subject_id}-{night_id}", total=total_steps)
             except Exception:
                 task_id = None
@@ -317,7 +464,20 @@ def process_record(logger, psg_file: str, hyp_file: str, subject_id: str, night_
         feat_cols: Dict[str, np.ndarray] = {}
 
         for ch, arr in canon_high.items():
-            vecs = _features_high_channel_batch(logger, ch, arr[:n_epochs, :], fs=float(fs_map.get("high", 100.0)))
+            vecs = _features_high_channel_batch(
+                logger, ch, arr[:n_epochs, :], fs=float(fs_map.get("high", 100.0))
+            )
+            feat_cols.update(vecs)
+            if task_id is not None and hasattr(progress, "update"):
+                try:
+                    progress.update(task_id, advance=1)
+                except Exception:
+                    pass
+
+        for ch, arr in canon_mid.items():
+            vecs = _features_mid_channel_batch(
+                logger, ch, arr[:n_epochs, :], fs_mid=float(fs_map.get("mid", 10.0))
+            )
             feat_cols.update(vecs)
             if task_id is not None and hasattr(progress, "update"):
                 try:
@@ -326,7 +486,9 @@ def process_record(logger, psg_file: str, hyp_file: str, subject_id: str, night_
                     pass
 
         for ch, arr in canon_low.items():
-            vecs = _features_low_channel_batch(logger, ch, arr[:n_epochs, :], fs_low=float(fs_map.get("low", 1.0)))
+            vecs = _features_low_channel_batch(
+                logger, ch, arr[:n_epochs, :], fs_low=float(fs_map.get("low", 1.0))
+            )
             feat_cols.update(vecs)
             if task_id is not None and hasattr(progress, "update"):
                 try:
@@ -337,9 +499,12 @@ def process_record(logger, psg_file: str, hyp_file: str, subject_id: str, night_
         y_small = y_df.head(n_epochs).select(["epoch_idx", "t0_sec", "stage"])
 
         try:
-            sleep_onset_idx = int(y_df.filter(pl.col("stage") != "W").select("epoch_idx").min().item()) if y_df.filter(pl.col("stage") != "W").height > 0 else None
+            sleep_onset_idx = int(
+                y_df.filter(pl.col("stage") != "W").select("epoch_idx").min().item()
+            ) if y_df.filter(pl.col("stage") != "W").height > 0 else None
         except Exception:
             sleep_onset_idx = None
+
         if sleep_onset_idx is not None:
             sleep_onset_sec = float(sleep_onset_idx) * float(EPOCH_LEN)
             tso_min = (y_small["t0_sec"].to_numpy() - sleep_onset_sec) / 60.0
@@ -347,9 +512,16 @@ def process_record(logger, psg_file: str, hyp_file: str, subject_id: str, night_
         else:
             tso_min = np.zeros(n_epochs, dtype=float)
 
+        lookup_root = root_dir or os.path.dirname(psg_file)
+        logger.log(f"[DEMOGRAPHICS] Looking up {subject_id} in {lookup_root}")
+        age, sex = _get_subject_demographics(subject_id, lookup_root)
+        logger.log(f"[DEMOGRAPHICS] Found: age={age}, sex={sex}")
+
         meta = pl.DataFrame({
             "subject_id": [subject_id] * n_epochs,
             "night_id":   [night_id] * n_epochs,
+            "age":        [age] * n_epochs,
+            "sex":        [sex] * n_epochs,
             "tso_min":    tso_min,
         })
 

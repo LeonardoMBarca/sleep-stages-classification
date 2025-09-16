@@ -4,9 +4,8 @@ import polars as pl
 import pyedflib
 
 from typing import Tuple, Dict, List
-from utils.utils import slugify, normspace
+from utils import slugify, normspace
 
-# Each epoch has 30 seconds (R&K manual).
 EPOCH_LEN = 30.0
 
 
@@ -170,10 +169,16 @@ def read_and_epoch_channel(logger, reader: pyedflib.EdfReader, ch_idx: int, epoc
         return np.empty((0, int(round(epoch_len * expected_fs))), dtype=np.float32)
 
 
-def read_psg_epochs(logger, psg_file: str, epoch_len: float = EPOCH_LEN) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, float]]:
-    """Read PSG file and epoch all channels into high-frequency (100 Hz) and low-frequency (1 Hz) dicts."""
+def read_psg_epochs(logger, psg_file: str, epoch_len: float = EPOCH_LEN) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, np.ndarray], Dict[str, float]]:
+    """
+    Reads the PSG and returns 3 epoched buckets:
+        - high_100: channels at 100 Hz (or resampled to 100 Hz)
+        - mid_10: channels at 10 Hz (or resampled to 10 Hz)
+        - low_1: channels at 1 Hz (or resampled to 1 Hz)
+    Returns (high_100, mid_10, low_1, fs_map).
+    """
     logger.log(f"[READ_PSG_EPOCHS] Reading {os.path.basename(psg_file)}")
-    high, low = {}, {}
+    high, mid, low = {}, {}, {}
     try:
         with pyedflib.EdfReader(psg_file) as f:
             labels_raw = [normspace(l) for l in f.getSignalLabels()]
@@ -186,37 +191,35 @@ def read_psg_epochs(logger, psg_file: str, epoch_len: float = EPOCH_LEN) -> Tupl
                 try:
                     fs_i = float(fs[i])
                     name = slugify(lab)
-                    if fs_i >= 50.0:
+
+                    if fs_i >= 30.0:
                         arr = read_and_epoch_channel(logger, f, i, epoch_len, expected_fs=100.0)
                         if arr.size > 0:
                             high[name] = arr
-                    elif fs_i <= 2.0:
+                    elif fs_i >= 5.0:
+                        arr = read_and_epoch_channel(logger, f, i, epoch_len, expected_fs=10.0)
+                        if arr.size > 0:
+                            mid[name] = arr
+                    else:
                         arr = read_and_epoch_channel(logger, f, i, epoch_len, expected_fs=1.0)
                         if arr.size > 0:
                             low[name] = arr
-                    else:
-                        if fs_i > 2.0:
-                            arr = read_and_epoch_channel(logger, f, i, epoch_len, expected_fs=100.0)
-                            if arr.size > 0:
-                                high[name] = arr
-                        else:
-                            arr = read_and_epoch_channel(logger, f, i, epoch_len, expected_fs=1.0)
-                            if arr.size > 0:
-                                low[name] = arr
+
                 except Exception as e:
                     logger.log(f"[READ_PSG_EPOCHS] Channel '{lab}' failed: {e}", "warning")
 
-        n_list = [v.shape[0] for v in high.values()] + [v.shape[0] for v in low.values()]
+        n_list = [v.shape[0] for v in high.values()] + [v.shape[0] for v in mid.values()] + [v.shape[0] for v in low.values()]
         if not n_list:
-            return {}, {}, {}
+            return {}, {}, {}, {}
 
         n_epochs = min(n_list)
-        for d in (high, low):
+        for d in (high, mid, low):
             for k in list(d.keys()):
                 d[k] = d[k][:n_epochs]
 
-        logger.log(f"[READ_PSG_EPOCHS] n_epochs (common) after cut: {n_epochs} | high_ch={len(high)} | low_ch={len(low)}")
-        return high, low, {"high": 100.0, "low": 1.0}
+        logger.log(f"[READ_PSG_EPOCHS] n_epochs (common) after cut: {n_epochs} | high={len(high)} | mid={len(mid)} | low={len(low)}")
+        return high, mid, low, {"high": 100.0, "mid": 10.0, "low": 1.0}
+
     except Exception as e:
         logger.log(f"[READ_PSG_EPOCHS] Fatal: {e}", "error")
-        return {}, {}, {}
+        return {}, {}, {}, {}
