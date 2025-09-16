@@ -184,7 +184,3 @@ Examples in your data:
 * `Resp_oronasal_clip_frac_1hz ~ 0.033` → resp signal saturated at ~3% of the epoch; good to use as *downweight*.
 * `Temp_rectal_*` is stable and within range; quality OK.
 * `TSO = 0` (sleep not yet initiated — 1st epoch W).
-
----
-
-If you keep this guide with your data, anyone (or future you) will understand what each column is, how it was created, and why it's there — and this greatly speeds up feature selection iteration and result interpretation.
