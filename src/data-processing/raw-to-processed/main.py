@@ -139,7 +139,7 @@ def build_tabular_dataset(
                     task = progress.add_task("Files (parallel)", total=len(pairs))
                     with ProcessPoolExecutor(max_workers=workers, mp_context=None) as ex:
                         futures = _submit_all(ex)
-                        for fut in as_completed(futures, timeout=300):  
+                        for fut in as_completed(futures, timeout=3600):  
                             try:
                                 start_result_time = time.time()
                                 sid, df = fut.result(timeout=30)  
@@ -190,7 +190,7 @@ def build_tabular_dataset(
                 logger.log(f"[BUILD_TABULAR_DATASET] Progress failed ({e}); running parallel without bar.", "warning")
                 with ProcessPoolExecutor(max_workers=workers, mp_context=None) as ex:
                     futures = _submit_all(ex)
-                    for fut in as_completed(futures, timeout=300):
+                    for fut in as_completed(futures, timeout=3600):
                         try:
                             sid, df = fut.result(timeout=30)
                             
@@ -234,7 +234,7 @@ def build_tabular_dataset(
         else:
             with ProcessPoolExecutor(max_workers=workers, mp_context=None) as ex:
                 futures = _submit_all(ex)
-                for fut in as_completed(futures, timeout=300):
+                for fut in as_completed(futures, timeout=3600):
                     try:
                         sid, df = fut.result(timeout=30)
                         
@@ -276,7 +276,6 @@ def build_tabular_dataset(
                         logger.log(f"[BUILD_TABULAR_DATASET] ✗ Worker error: {e}", "error")
                         logger.log(f"[BUILD_TABULAR_DATASET] Error traceback: {traceback.format_exc()}", "error")
 
-        # Log processing summary
         elapsed_time = time.time() - processing_stats['start_time']
         logger.log(f"[BUILD_TABULAR_DATASET] ========== PROCESSING SUMMARY ===========")
         logger.log(f"[BUILD_TABULAR_DATASET] Total pairs: {processing_stats['total_pairs']}")
