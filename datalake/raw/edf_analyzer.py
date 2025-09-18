@@ -118,35 +118,39 @@ def plot_hypnogram_edf(edf_path, epoch_sec_guess=30):
     plt.show()
 
 if __name__ == "__main__":
-    base = Path(__file__).resolve().parents[0]
-    p_cassette = base / "sleep-cassette"
-    p_telemetry = base / "sleep-telemetry"
+    try:
+        base = Path(__file__).resolve().parents[0]
+        p_cassette = base / "sleep-cassette"
+        p_telemetry = base / "sleep-telemetry"
 
-    rows_psg = scan_dir_psg(p_cassette) + scan_dir_psg(p_telemetry)
-    fingerprints_psg = fingerprint_psg(rows_psg)
+        rows_psg = scan_dir_psg(p_cassette) + scan_dir_psg(p_telemetry)
+        fingerprints_psg = fingerprint_psg(rows_psg)
 
-    print("\n=== PSG: Esquemas únicos (labels+fs) ===")
-    for i, (k, files) in enumerate(fingerprints_psg.items(), 1):
-        schema = json.loads(k)
-        print(f"\n[{i}] {len(files)} arquivos")
-        print("labels:", schema["labels"])
-        print("fs:", schema["sfreqs"])
-        print("exemplos:", files[:5])
+        print("\n=== PSG: Esquemas únicos (labels+fs) ===")
+        for i, (k, files) in enumerate(fingerprints_psg.items(), 1):
+            schema = json.loads(k)
+            print(f"\n[{i}] {len(files)} arquivos")
+            print("labels:", schema["labels"])
+            print("fs:", schema["sfreqs"])
+            print("exemplos:", files[:5])
 
-    rows_hyp = scan_dir_hyp(p_cassette) + scan_dir_hyp(p_telemetry)
+        rows_hyp = scan_dir_hyp(p_cassette) + scan_dir_hyp(p_telemetry)
 
-    print("\n=== HYP: Preview por arquivo ===")
-    for r in rows_hyp:
-        print(f"\n- {r['file']} | eventos={r['n_events']} | duração={r['duration_s']}s | modal_dur={r['duration_modal_s']}s")
-        print("  labels únicas:", r["labels_unique"])
-        if r["preview"]:
-            print("  preview (primeiros eventos):")
-            for ev in r["preview"]:
-                print(f"    t={ev['onset_s']:>8.1f}s  dur={ev['duration_s']:>6.1f}s  label={ev['label']}")
+        print("\n=== HYP: Preview por arquivo ===")
+        for r in rows_hyp:
+            print(f"\n- {r['file']} | eventos={r['n_events']} | duração={r['duration_s']}s | modal_dur={r['duration_modal_s']}s")
+            print("  labels únicas:", r["labels_unique"])
+            if r["preview"]:
+                print("  preview (primeiros eventos):")
+                for ev in r["preview"]:
+                    print(f"    t={ev['onset_s']:>8.1f}s  dur={ev['duration_s']:>6.1f}s  label={ev['label']}")
 
-    fp_hyp = fingerprint_hyp_by_labelset(rows_hyp)
-    print("\n=== HYP: Conjuntos de labels únicos (fingerprint de anotações) ===")
-    for i, (k, files) in enumerate(fp_hyp.items(), 1):
-        labels = json.loads(k)
-        print(f"\n[{i}] {len(files)} arquivos | labels: {labels}")
-        print("exemplos:", files[:5])
+        fp_hyp = fingerprint_hyp_by_labelset(rows_hyp)
+        print("\n=== HYP: Conjuntos de labels únicos (fingerprint de anotações) ===")
+        for i, (k, files) in enumerate(fp_hyp.items(), 1):
+            labels = json.loads(k)
+            print(f"\n[{i}] {len(files)} arquivos | labels: {labels}")
+            print("exemplos:", files[:5])
+
+    except Exception as e:
+        print(f"Error: {e}")
