@@ -3,6 +3,11 @@ import polars as pl
 import time
 import traceback
 from pathlib import Path
+import multiprocessing as mp
+try:
+    mp.set_start_method("spawn", force=True)
+except RuntimeError:
+    pass
 from concurrent.futures import ProcessPoolExecutor, as_completed, TimeoutError
 from threading import Lock
 
@@ -137,7 +142,7 @@ def build_tabular_dataset(
             try:
                 with _make_progress() as progress:
                     task = progress.add_task("Files (parallel)", total=len(pairs))
-                    with ProcessPoolExecutor(max_workers=workers, mp_context=None) as ex:
+                    with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn")) as ex:
                         futures = _submit_all(ex)
                         for fut in as_completed(futures, timeout=3600):  
                             try:
@@ -188,7 +193,7 @@ def build_tabular_dataset(
                                 progress.update(task, advance=1)
             except Exception as e:
                 logger.log(f"[BUILD_TABULAR_DATASET] Progress failed ({e}); running parallel without bar.", "warning")
-                with ProcessPoolExecutor(max_workers=workers, mp_context=None) as ex:
+                with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn")) as ex:
                     futures = _submit_all(ex)
                     for fut in as_completed(futures, timeout=3600):
                         try:
@@ -232,7 +237,7 @@ def build_tabular_dataset(
                             logger.log(f"[BUILD_TABULAR_DATASET] ✗ Worker error: {e}", "error")
                             logger.log(f"[BUILD_TABULAR_DATASET] Error traceback: {traceback.format_exc()}", "error")
         else:
-            with ProcessPoolExecutor(max_workers=workers, mp_context=None) as ex:
+            with ProcessPoolExecutor(max_workers=workers, mp_context=mp.get_context("spawn")) as ex:
                 futures = _submit_all(ex)
                 for fut in as_completed(futures, timeout=3600):
                     try:

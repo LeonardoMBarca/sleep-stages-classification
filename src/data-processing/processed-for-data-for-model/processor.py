@@ -46,9 +46,6 @@ def load_sleep_cassette(root: Path, add_from_path: bool = True,  keep_file: bool
 df_cassette = load_sleep_cassette(SLEEP_CASSETTE, True)
 df_telemetry = load_sleep_cassette(SLEEP_TELEMETRY, True)
 
-print(df_cassette.shape, df_cassette.columns)
-print(df_telemetry.shape, df_telemetry.columns)
-
 META = [
     "subject_id", "night_id", "epoch_idx", "t0_sec", "stage",
     "age", "sex", "tso_min",
@@ -109,6 +106,9 @@ final_cols_telemetry = present(df_telemetry, KEEP)
 
 final_parquet_file_cassette = df_cassette.select(final_cols_cassette)
 final_parquet_file_telemetry = df_telemetry.select(final_cols_telemetry)
+
+print(f"Cassette columns: {len(final_parquet_file_cassette.columns)}")
+print(f"Telemetry columns: {len(final_parquet_file_telemetry.columns)}")
 
 final_parquet_file_cassette.write_parquet(OUT_PATH_CASSETTE)
 final_parquet_file_telemetry.write_parquet(OUT_PATH_TELEMETRY)

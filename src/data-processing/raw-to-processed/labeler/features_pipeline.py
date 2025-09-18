@@ -164,6 +164,33 @@ def _welch_channel_batch(x_epochs: np.ndarray, fs: float, nperseg: int = 256):
 def _safe_div(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return a / (b + 1e-12)
 
+def _epochwise_resample_mean(x_epochs: np.ndarray, src_fs: float, target_fs: float) -> np.ndarray:
+    x = np.asarray(x_epochs, dtype=np.float64)
+    if x.ndim != 2:
+        raise ValueError("x_epochs must be 2D (n_epochs, n_samples_per_epoch)")
+
+    if abs(src_fs - target_fs) < 1e-9:
+        return x  
+
+    epoch_len_sec = x.shape[1] / float(src_fs)
+    n_target = int(round(epoch_len_sec * target_fs))
+    if n_target <= 0:
+        raise ValueError("Computed target samples per epoch <= 0")
+
+    if src_fs > target_fs:
+        factor = int(round(src_fs / target_fs))
+        usable = (x.shape[1] // factor) * factor
+        x_cut = x[:, :usable]
+        x_reshaped = x_cut.reshape(x.shape[0], -1, factor)  
+        return x_reshaped.mean(axis=2)
+    else:
+        factor = int(round(target_fs / src_fs))
+        x_rep = np.repeat(x, factor, axis=1)
+        if x_rep.shape[1] >= n_target:
+            return x_rep[:, :n_target]
+        pad = n_target - x_rep.shape[1]
+        return np.pad(x_rep, ((0,0),(0,pad)), mode="edge")
+
 def _spec_peak_freq(psd: np.ndarray, freqs: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """Peak frequency within a band, per epoch."""
     if not mask.any():
@@ -462,6 +489,18 @@ Processes a PSG/Hyp pair into a DataFrame (Polars) with features per epoch and l
                 task_id = None
 
         feat_cols: Dict[str, np.ndarray] = {}
+
+        try:
+            if ("EMG_submental" in canon_high) and ("EMG_submental" not in canon_low):
+                fs_high = float(fs_map.get("high", 100.0))
+                emg_high = canon_high["EMG_submental"][:n_epochs, :]
+                emg_1hz = _epochwise_resample_mean(emg_high, src_fs=fs_high, target_fs=1.0)
+                vecs_emg_1hz = _features_low_channel_batch(logger, "EMG_submental", emg_1hz, fs_low=1.0)
+                feat_cols.update(vecs_emg_1hz)
+                logger.log("[PROCESS_RECORD] Telemetry bridge: EMG_submental 100Hz -> features _1hz geradas")
+                
+        except Exception as e:
+            logger.log(f"[PROCESS_RECORD] Telemetry bridge failed: {e}", "warning")
 
         for ch, arr in canon_high.items():
             vecs = _features_high_channel_batch(
