@@ -1,4 +1,5 @@
 import re
+import numpy as np
 import polars as pl
 from typing import List, Optional
 from pathlib import Path
@@ -25,6 +26,15 @@ except Exception:
             def add_task(self, *a, **k): return 0
             def update(self, *a, **k): pass
         yield Dummy()
+
+def _downsample_emg_to_1hz_rms(x_epochs_100hz: np.ndarray, fs: float = 100.0) -> np.ndarray:
+    x = np.asarray(x_epochs_100hz, dtype=np.float64)
+    n_ep, n_samp = x.shape
+    sec = int(round(fs))
+    usable = (n_samp // sec) * sec       
+    x = x[:, :usable].reshape(n_ep, -1, sec) 
+    env_1hz = np.sqrt((x**2).mean(axis=2))
+    return env_1hz
 
 def _pair_key(psg_path: str, hyp_path: str) -> tuple[str, str]:
     """Stable BaseNames (for save shards and registry in hash)."""

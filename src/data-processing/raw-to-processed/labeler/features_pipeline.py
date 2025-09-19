@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, Tuple, Optional, Any
 from scipy.signal import welch
 from scipy.stats import kurtosis, skew
-from utils import best_match_idx, slugify
+from utils import best_match_idx, slugify, _downsample_emg_to_1hz_rms
 from .io_edf import EPOCH_LEN, read_hyp_epochs_aligned, read_psg_epochs
 
 # Classic bands of EEG (Hz)
@@ -494,7 +494,7 @@ Processes a PSG/Hyp pair into a DataFrame (Polars) with features per epoch and l
             if ("EMG_submental" in canon_high) and ("EMG_submental" not in canon_low):
                 fs_high = float(fs_map.get("high", 100.0))
                 emg_high = canon_high["EMG_submental"][:n_epochs, :]
-                emg_1hz = _epochwise_resample_mean(emg_high, src_fs=fs_high, target_fs=1.0)
+                emg_1hz  = _downsample_emg_to_1hz_rms(emg_high, fs_high)
                 vecs_emg_1hz = _features_low_channel_batch(logger, "EMG_submental", emg_1hz, fs_low=1.0)
                 feat_cols.update(vecs_emg_1hz)
                 logger.log("[PROCESS_RECORD] Telemetry bridge: EMG_submental 100Hz -> features _1hz geradas")

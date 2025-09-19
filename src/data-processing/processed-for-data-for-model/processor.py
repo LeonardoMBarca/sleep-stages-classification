@@ -1,7 +1,10 @@
 import polars as pl
+import pandas as pd
 import os
 
 from pathlib import Path
+from sklearn.feature_selection import f_classif
+from scipy.stats import kruskal
 
 BASE_PATH = Path(__file__).resolve().parents[3]
 
@@ -82,15 +85,13 @@ EOG_CORE = [
 EMG_CORE = [
     "EMG_submental_p90_1hz",
     "EMG_submental_rms_1hz",
-    "EMG_submental_iqr_1hz",
 ]
 
 OPTIONAL = [
     "EEG_Fpz_Cz_beta_relpow_256",
     "EEG_Fpz_Cz_alpha_relpow_256",
     "EOG_theta_relpow_256",
-    "EMG_submental_median_1hz",
-    "EMG_submental_mad_1hz",
+    "EMG_submental_median_1hz"
 ]
 
 def present(df: pl.DataFrame, cols: list[str]) -> list[str]:
@@ -100,12 +101,60 @@ def present(df: pl.DataFrame, cols: list[str]) -> list[str]:
 KEEP = META + EEG_CORE + EEG_RATIOS + EEG_DESCR + EOG_CORE + EMG_CORE
 KEEP += OPTIONAL  # <- Remove this lines if you want without the optional columns
 
-final_cols_cassette = present(df_cassette, KEEP)
-final_cols_telemetry = present(df_telemetry, KEEP)
+df_cols_cassette = present(df_cassette, KEEP)
+df__cols_telemetry = present(df_telemetry, KEEP)
 
+final_parquet_file_cassette = df_cassette.select(df_cols_cassette)
+final_parquet_file_telemetry = df_telemetry.select(df__cols_telemetry)
 
-final_parquet_file_cassette = df_cassette.select(final_cols_cassette)
-final_parquet_file_telemetry = df_telemetry.select(final_cols_telemetry)
+df_pandas_c = final_parquet_file_cassette.to_pandas()
+df_pandas_t = final_parquet_file_telemetry.to_pandas()
+
+x_c = df_pandas_c[df_cols_cassette].drop(columns=META)
+y_c = df_pandas_c["stage"]
+
+f_vals_c, p_vals_c = f_classif(x_c, y_c)
+anova_results_c = pd.DataFrame({
+    "feature": x_c.columns,
+    "f_value": f_vals_c,
+    "p_value": p_vals_c
+}).sort_values("f_value", ascending=False)
+
+print(f"F CLASSIF RESULT CASSETTE: \n{anova_results_c}")
+
+kruskal_results_c = []
+for col in x_c.columns:
+    groups = [x_c.loc[y_c == cls, col] for cls in y_c.unique()]
+    stat, p = kruskal(*groups)
+    kruskal_results_c.append((col, stat, p))
+
+kruskal_results_c = pd.DataFrame(kruskal_results_c, columns=["feature", "H_value", "p_value"]) \
+                        .sort_values("H_value", ascending=False)
+
+print(f"KRUSKAL RESULT CASSETTE: \n{kruskal_results_c}")
+
+x_t = df_pandas_t[df_cols_cassette].drop(columns=META)
+y_t = df_pandas_t["stage"]
+
+f_vals_t, p_vals_t = f_classif(x_t, y_t)
+anova_results_t = pd.DataFrame({
+    "feature": x_t.columns,
+    "f_value": f_vals_c,
+    "p_value": p_vals_c
+}).sort_values("f_value", ascending=False)
+
+print(f"F CLASSIF RESULT TELEMETRY: \n{anova_results_t}")
+
+kruskal_results_t = []
+for col in x_t.columns:
+    groups = [x_t.loc[y_t == cls, col] for cls in y_t.unique()]
+    stat, p = kruskal(*groups)
+    kruskal_results_t.append((col, stat, p))
+
+kruskal_results_t = pd.DataFrame(kruskal_results_t, columns=["feature", "H_value", "p_value"]) \
+                        .sort_values("H_value", ascending=False)
+
+print(f"KRUSKAL RESULT TELEMETRY: \n{kruskal_results_t}")
 
 print(f"Cassette columns: {len(final_parquet_file_cassette.columns)}")
 print(f"Telemetry columns: {len(final_parquet_file_telemetry.columns)}")
