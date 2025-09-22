@@ -1,6 +1,7 @@
+import re
 import polars as pl
 import pandas as pd
-import os
+import numpy as np
 
 from pathlib import Path
 from sklearn.feature_selection import f_classif
@@ -14,22 +15,82 @@ SLEEP_TELEMETRY = BASE_PATH / "datalake" / "processed" / "sleep-telemetry"
 OUT_PATH_CASSETTE = BASE_PATH / "datalake" / "data-for-model" / "sleep-cassette.parquet" 
 OUT_PATH_TELEMETRY = BASE_PATH / "datalake" / "data-for-model" / "sleep-telemetry.parquet" 
 
-def load_sleep_cassette(root: Path, add_from_path: bool = True,  keep_file: bool = False) -> pl.DataFrame:
+def load_sleep_datasets(
+    root: Path,
+    add_from_path: bool = True,
+    keep_file: bool = False,
+    head_buffer: int = 30,
+    tail_buffer: int = 30,
+    mid_buffer: int = 30,
+    mid_cap: int = 90,
+) -> pl.DataFrame | tuple[pl.DataFrame, pl.DataFrame]:
     try:
         files = sorted(root.rglob("*.parquet"))
         if not files:
             raise FileNotFoundError(f"No .parquet finded in {root}")
-        
-        paths = [str(p) for p in files]
-        
-        lf = pl.concat(
-            [
-                pl.read_parquet(p).with_columns(pl.lit(p).alias("file"))
-                for p in paths
-            ],
-            how="vertical_relaxed",
-        ).lazy()
+        dfs = []
+        for p in files:
+            df = pl.read_parquet(p)
+            n = df.height
+            stages = df.select("stage").to_series().to_list()
+            k1 = None
+            for i, s in enumerate(stages):
+                if s != "W":
+                    k1 = i
+                    break
+            if k1 is None:
+                start_keep = max(0, n - head_buffer)
+                stop_keep = n
+            else:
+                k2 = None
+                for j in range(n - 1, -1, -1):
+                    if stages[j] != "W":
+                        k2 = j
+                        break
+                start_keep = max(0, k1 - head_buffer)
+                stop_keep = min(n, (k2 + 1 + tail_buffer) if k2 is not None else n)
+                if stop_keep <= start_keep:
+                    stop_keep = min(n, start_keep + 1)
+            kept = stop_keep - start_keep
+            df_slice = df.slice(start_keep, kept).with_columns([
+                pl.lit(str(p)).alias("file"),
+                pl.arange(0, pl.len()).alias("_i")
+            ])
+            mid_w_total = 0
+            mid_w_removed = 0
+            mid_runs_affected = 0
+            if kept > 0 and mid_cap > 0 and mid_buffer >= 0:
+                st_mid = df_slice.select("stage").to_series().to_list()
+                m = len(st_mid)
+                runs = []
+                rs = 0
+                for t in range(1, m):
+                    if st_mid[t] != st_mid[t-1]:
+                        runs.append((rs, t-1, st_mid[t-1]))
+                        rs = t
+                runs.append((rs, m-1, st_mid[-1]))
+                keep_mask = np.ones(m, dtype=bool)
+                for rs, re_, lab in runs:
+                    L = re_ - rs + 1
+                    if lab == "W" and rs > 0 and re_ < m-1:
+                        mid_w_total += L
+                        if L > mid_cap:
+                            a = rs + mid_buffer
+                            b = re_ - mid_buffer + 1
+                            if a < b:
+                                keep_mask[a:b] = False
+                                mid_w_removed += (b - a)
+                                mid_runs_affected += 1
+                keep_idx = np.nonzero(keep_mask)[0].tolist()
+                if len(keep_idx) < m:
+                    df_slice = (
+                        df_slice.join(pl.DataFrame({"_i": keep_idx}), on="_i", how="inner")
+                                .sort("_i")
+                    )
+            df_out = df_slice.drop("_i")
+            dfs.append(df_out)
 
+        lf = pl.concat(dfs, how="vertical_relaxed").lazy()
         if add_from_path:
             lf = lf.drop(["subject_id", "night_id"], strict=False).with_columns([
                 pl.col("file").str.extract(r"subject_id=([^/\\]+)", group_index=1).alias("subject_id"),
@@ -37,17 +98,13 @@ def load_sleep_cassette(root: Path, add_from_path: bool = True,  keep_file: bool
             ])
             if not keep_file:
                 lf = lf.drop("file", strict=False)
-
-
         df = lf.collect(engine="streaming")
-
         return df
-
     except Exception as e:
         print(f"ERROR: {e}")
 
-df_cassette = load_sleep_cassette(SLEEP_CASSETTE, True)
-df_telemetry = load_sleep_cassette(SLEEP_TELEMETRY, True)
+df_cassette = load_sleep_datasets(SLEEP_CASSETTE, True)
+df_telemetry = load_sleep_datasets(SLEEP_TELEMETRY, True)
 
 META = [
     "subject_id", "night_id", "epoch_idx", "t0_sec", "stage",
