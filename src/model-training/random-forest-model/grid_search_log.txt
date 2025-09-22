@@ -1,0 +1,55 @@
+Fit 1: params={'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7194, std=0.0013
+Fit 2: params={'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7199, std=0.0007
+Fit 3: params={'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7191, std=0.0005
+Fit 4: params={'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7199, std=0.0002
+Fit 5: params={'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7187, std=0.0002
+Fit 6: params={'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7195, std=0.0004
+Fit 7: params={'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7193, std=0.0002
+Fit 8: params={'max_depth': 10, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7197, std=0.0004
+Fit 9: params={'max_depth': 10, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7168, std=0.0007
+Fit 10: params={'max_depth': 10, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7184, std=0.0002
+Fit 11: params={'max_depth': 10, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7170, std=0.0007
+Fit 12: params={'max_depth': 10, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7182, std=0.0001
+Fit 13: params={'max_depth': 10, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7168, std=0.0008
+Fit 14: params={'max_depth': 10, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7181, std=0.0004
+Fit 15: params={'max_depth': 10, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7174, std=0.0007
+Fit 16: params={'max_depth': 10, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7179, std=0.0001
+Fit 17: params={'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7865, std=0.0018
+Fit 18: params={'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7871, std=0.0016
+Fit 19: params={'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7874, std=0.0017
+Fit 20: params={'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7874, std=0.0019
+Fit 21: params={'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7868, std=0.0021
+Fit 22: params={'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7882, std=0.0019
+Fit 23: params={'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7866, std=0.0009
+Fit 24: params={'max_depth': 20, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7883, std=0.0012
+Fit 25: params={'max_depth': 20, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7850, std=0.0016
+Fit 26: params={'max_depth': 20, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7858, std=0.0018
+Fit 27: params={'max_depth': 20, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7855, std=0.0016
+Fit 28: params={'max_depth': 20, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7866, std=0.0014
+Fit 29: params={'max_depth': 20, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7864, std=0.0022
+Fit 30: params={'max_depth': 20, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7871, std=0.0017
+Fit 31: params={'max_depth': 20, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7866, std=0.0016
+Fit 32: params={'max_depth': 20, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7871, std=0.0011
+Fit 33: params={'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7772, std=0.0023
+Fit 34: params={'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7777, std=0.0017
+Fit 35: params={'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7854, std=0.0026
+Fit 36: params={'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7866, std=0.0023
+Fit 37: params={'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7880, std=0.0027
+Fit 38: params={'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7903, std=0.0021
+Fit 39: params={'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7895, std=0.0018
+Fit 40: params={'max_depth': None, 'max_features': 'sqrt', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7910, std=0.0020
+Fit 41: params={'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7748, std=0.0030
+Fit 42: params={'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7764, std=0.0019
+Fit 43: params={'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7840, std=0.0021
+Fit 44: params={'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 1, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7850, std=0.0021
+Fit 45: params={'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 100}, mean_score=0.7871, std=0.0022
+Fit 46: params={'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 2, 'n_estimators': 300}, mean_score=0.7879, std=0.0012
+Fit 47: params={'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 100}, mean_score=0.7880, std=0.0023
+Fit 48: params={'max_depth': None, 'max_features': 'log2', 'min_samples_leaf': 2, 'min_samples_split': 5, 'n_estimators': 300}, mean_score=0.7889, std=0.0014
+
+Melhores parâmetros:
+max_depth: None
+max_features: sqrt
+min_samples_leaf: 2
+min_samples_split: 5
+n_estimators: 300
