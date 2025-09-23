@@ -1,4 +1,3 @@
-import re
 import polars as pl
 import pandas as pd
 import numpy as np
@@ -6,13 +5,18 @@ import numpy as np
 from pathlib import Path
 from sklearn.feature_selection import f_classif
 from scipy.stats import kruskal
+from utils import stratified_subject_split_by_quotas, indices_from_subject_assign
 
 BASE_PATH = Path(__file__).resolve().parents[3]
 
 SLEEP_CASSETTE = BASE_PATH / "datalake" / "processed" / "sleep-cassette"
 SLEEP_TELEMETRY = BASE_PATH / "datalake" / "processed" / "sleep-telemetry"
 
-OUT_PATH_CASSETTE = BASE_PATH / "datalake" / "data-for-model" / "sleep-cassette.parquet" 
+CASSETTE_TRAIN = BASE_PATH / "datalake" / "data-for-model" / "train" / "train_sleep_cassette.parquet"
+CASSETTE_VAL = BASE_PATH / "datalake" / "data-for-model" / "val" / "val_sleep_cassette.parquet"
+CASSETTE_TEST = BASE_PATH / "datalake" / "data-for-model" / "test" / "test_sleep_cassette.parquet"
+
+OUT_PATH_CASSETTE = BASE_PATH / "datalake" / "data-for-model" / "sleep-cassette.parquet"
 OUT_PATH_TELEMETRY = BASE_PATH / "datalake" / "data-for-model" / "sleep-telemetry.parquet" 
 
 def load_sleep_datasets(
@@ -213,10 +217,29 @@ kruskal_results_t = pd.DataFrame(kruskal_results_t, columns=["feature", "H_value
 
 print(f"KRUSKAL RESULT TELEMETRY: \n{kruskal_results_t}")
 
+df_for_split = final_parquet_file_cassette.to_pandas()
+
+assign = stratified_subject_split_by_quotas(
+    df_for_split,
+    ratios={"train": 0.6, "val": 0.2, "test": 0.2},
+    age_bins=(0, 40, 60, 120),
+    age_labels=("≤40", "41–60", "≥61"),
+    random_state=2025,
+)
+
+idx = indices_from_subject_assign(df_for_split, assign)
+
+df_train_cassette = df_for_split.iloc[idx["train"]]
+df_val_cassette   = df_for_split.iloc[idx["val"]]
+df_test_cassette  = df_for_split.iloc[idx["test"]]
+
 print(f"Cassette columns: {len(final_parquet_file_cassette.columns)}")
 print(f"Telemetry columns: {len(final_parquet_file_telemetry.columns)}")
 
-final_parquet_file_cassette.write_parquet(OUT_PATH_CASSETTE)
+df_train_cassette.to_parquet(CASSETTE_TRAIN, index=False)
+df_val_cassette.to_parquet(CASSETTE_VAL, index=False)
+df_test_cassette.to_parquet(CASSETTE_TEST, index=False)
+final_parquet_file_telemetry.write_parquet(OUT_PATH_CASSETTE)
 final_parquet_file_telemetry.write_parquet(OUT_PATH_TELEMETRY)
 
 print(f"Datasets uploaded in: {BASE_PATH}/datalake/data-for-model")
