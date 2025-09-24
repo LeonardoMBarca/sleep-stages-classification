@@ -5,7 +5,7 @@ import numpy as np
 from pathlib import Path
 from sklearn.feature_selection import f_classif
 from scipy.stats import kruskal
-from utils import stratified_subject_split_by_quotas, indices_from_subject_assign
+from utils import stratified_subject_split_by_quotas, indices_from_subject_assign, load_sleep_datasets, add_rolling_features_sleep_fast
 
 BASE_PATH = Path(__file__).resolve().parents[3]
 
@@ -19,100 +19,12 @@ CASSETTE_TEST = BASE_PATH / "datalake" / "data-for-model" / "test" / "test_sleep
 OUT_PATH_CASSETTE = BASE_PATH / "datalake" / "data-for-model" / "sleep-cassette.parquet"
 OUT_PATH_TELEMETRY = BASE_PATH / "datalake" / "data-for-model" / "sleep-telemetry.parquet" 
 
-def load_sleep_datasets(
-    root: Path,
-    add_from_path: bool = True,
-    keep_file: bool = False,
-    head_buffer: int = 30,
-    tail_buffer: int = 30,
-    mid_buffer: int = 30,
-    mid_cap: int = 90,
-) -> pl.DataFrame | tuple[pl.DataFrame, pl.DataFrame]:
-    try:
-        files = sorted(root.rglob("*.parquet"))
-        if not files:
-            raise FileNotFoundError(f"No .parquet finded in {root}")
-        dfs = []
-        for p in files:
-            df = pl.read_parquet(p)
-            n = df.height
-            stages = df.select("stage").to_series().to_list()
-            k1 = None
-            for i, s in enumerate(stages):
-                if s != "W":
-                    k1 = i
-                    break
-            if k1 is None:
-                start_keep = max(0, n - head_buffer)
-                stop_keep = n
-            else:
-                k2 = None
-                for j in range(n - 1, -1, -1):
-                    if stages[j] != "W":
-                        k2 = j
-                        break
-                start_keep = max(0, k1 - head_buffer)
-                stop_keep = min(n, (k2 + 1 + tail_buffer) if k2 is not None else n)
-                if stop_keep <= start_keep:
-                    stop_keep = min(n, start_keep + 1)
-            kept = stop_keep - start_keep
-            df_slice = df.slice(start_keep, kept).with_columns([
-                pl.lit(str(p)).alias("file"),
-                pl.arange(0, pl.len()).alias("_i")
-            ])
-            mid_w_total = 0
-            mid_w_removed = 0
-            mid_runs_affected = 0
-            if kept > 0 and mid_cap > 0 and mid_buffer >= 0:
-                st_mid = df_slice.select("stage").to_series().to_list()
-                m = len(st_mid)
-                runs = []
-                rs = 0
-                for t in range(1, m):
-                    if st_mid[t] != st_mid[t-1]:
-                        runs.append((rs, t-1, st_mid[t-1]))
-                        rs = t
-                runs.append((rs, m-1, st_mid[-1]))
-                keep_mask = np.ones(m, dtype=bool)
-                for rs, re_, lab in runs:
-                    L = re_ - rs + 1
-                    if lab == "W" and rs > 0 and re_ < m-1:
-                        mid_w_total += L
-                        if L > mid_cap:
-                            a = rs + mid_buffer
-                            b = re_ - mid_buffer + 1
-                            if a < b:
-                                keep_mask[a:b] = False
-                                mid_w_removed += (b - a)
-                                mid_runs_affected += 1
-                keep_idx = np.nonzero(keep_mask)[0].tolist()
-                if len(keep_idx) < m:
-                    df_slice = (
-                        df_slice.join(pl.DataFrame({"_i": keep_idx}), on="_i", how="inner")
-                                .sort("_i")
-                    )
-            df_out = df_slice.drop("_i")
-            dfs.append(df_out)
-
-        lf = pl.concat(dfs, how="vertical_relaxed").lazy()
-        if add_from_path:
-            lf = lf.drop(["subject_id", "night_id"], strict=False).with_columns([
-                pl.col("file").str.extract(r"subject_id=([^/\\]+)", group_index=1).alias("subject_id"),
-                pl.col("file").str.extract(r"(N\d)\.parquet$", group_index=1).alias("night_id"),
-            ])
-            if not keep_file:
-                lf = lf.drop("file", strict=False)
-        df = lf.collect(engine="streaming")
-        return df
-    except Exception as e:
-        print(f"ERROR: {e}")
-
 df_cassette = load_sleep_datasets(SLEEP_CASSETTE, True)
 df_telemetry = load_sleep_datasets(SLEEP_TELEMETRY, True)
 
 META = [
-    "subject_id", "night_id", "epoch_idx", "t0_sec", "stage",
-    "age", "sex", "tso_min",
+    "subject_id", "night_id", "epoch_idx", "stage",
+    "age", "sex",
 ]
 
 EEG_CORE = [
@@ -217,21 +129,55 @@ kruskal_results_t = pd.DataFrame(kruskal_results_t, columns=["feature", "H_value
 
 print(f"KRUSKAL RESULT TELEMETRY: \n{kruskal_results_t}")
 
-df_for_split = final_parquet_file_cassette.to_pandas()
+df_final_cassette = final_parquet_file_cassette.to_pandas()
+df_final_telemetry = final_parquet_file_telemetry.to_pandas()
+
+df_columns = df_final_cassette.columns
+df_columns = df_columns.to_list()
+for col in ["age", "epoch_idx", "stage", "night_id", "subject_id", "sex"]:
+    if col in df_columns:
+        df_columns.remove(col)
+
+feature_cols = [
+    "EEG_Pz_Oz_beta_relpow_256",
+    "EOG_delta_relpow_256",
+    "EEG_Pz_Oz_aperiodic_slope_256",
+    "EEG_Fpz_Cz_beta_relpow_256",
+    "EMG_submental_median_1hz",
+    "EEG_Fpz_Cz_aperiodic_slope_256",
+    "EOG_rms",
+    "EMG_submental_rms_1hz",
+    "EEG_Fpz_Cz_theta_relpow_256",
+    "EEG_Pz_Oz_alpha_relpow_256"
+]
+
+df_final_cassette = add_rolling_features_sleep_fast(
+    df_final_cassette,
+    feature_cols=feature_cols,
+    windows=[10], 
+    stats=("mean", "std", "max")
+)
+
+df_final_telemetry = add_rolling_features_sleep_fast(
+    df_final_telemetry,
+    feature_cols=feature_cols,
+    windows=[10], 
+    stats=("mean", "std", "max")
+)
 
 assign = stratified_subject_split_by_quotas(
-    df_for_split,
+    df_final_cassette,
     ratios={"train": 0.6, "val": 0.2, "test": 0.2},
     age_bins=(0, 40, 60, 120),
     age_labels=("≤40", "41–60", "≥61"),
     random_state=2025,
 )
 
-idx = indices_from_subject_assign(df_for_split, assign)
+idx = indices_from_subject_assign(df_final_cassette, assign)
 
-df_train_cassette = df_for_split.iloc[idx["train"]]
-df_val_cassette   = df_for_split.iloc[idx["val"]]
-df_test_cassette  = df_for_split.iloc[idx["test"]]
+df_train_cassette = df_final_cassette.iloc[idx["train"]]
+df_val_cassette   = df_final_cassette.iloc[idx["val"]]
+df_test_cassette  = df_final_cassette.iloc[idx["test"]]
 
 print(f"Cassette columns: {len(final_parquet_file_cassette.columns)}")
 print(f"Telemetry columns: {len(final_parquet_file_telemetry.columns)}")
@@ -239,7 +185,7 @@ print(f"Telemetry columns: {len(final_parquet_file_telemetry.columns)}")
 df_train_cassette.to_parquet(CASSETTE_TRAIN, index=False)
 df_val_cassette.to_parquet(CASSETTE_VAL, index=False)
 df_test_cassette.to_parquet(CASSETTE_TEST, index=False)
-final_parquet_file_telemetry.write_parquet(OUT_PATH_CASSETTE)
-final_parquet_file_telemetry.write_parquet(OUT_PATH_TELEMETRY)
+final_parquet_file_cassette.write_parquet(OUT_PATH_CASSETTE)
+df_final_telemetry.to_parquet(OUT_PATH_TELEMETRY, index=False)
 
 print(f"Datasets uploaded in: {BASE_PATH}/datalake/data-for-model")
