@@ -82,10 +82,10 @@ def load_sleep_datasets(
     root: Path,
     add_from_path: bool = True,
     keep_file: bool = False,
-    head_buffer: int = 30,
-    tail_buffer: int = 30,
+    head_buffer: int = 45,
+    tail_buffer: int = 45,
     mid_buffer: int = 30,
-    mid_cap: int = 90,
+    mid_cap: int = 0,
 ) -> pl.DataFrame | tuple[pl.DataFrame, pl.DataFrame]:
     try:
         files = sorted(root.rglob("*.parquet"))
