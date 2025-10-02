@@ -68,9 +68,7 @@ OPTIONAL = [
     "EOG_theta_relpow_256",
     "EMG_submental_median_1hz",
     "EEG_Pz_Oz_sef95_256",
-    "EOG_spec_entropy_256",
-    "EMG_submental_skewness_1hz",
-    "EMG_submental_kurtosis_1hz"
+    "EOG_spec_entropy_256"
 ]
 
 def present(df: pl.DataFrame, cols: list[str]) -> list[str]:
