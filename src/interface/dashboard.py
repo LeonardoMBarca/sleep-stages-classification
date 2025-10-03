@@ -25,14 +25,16 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, cast
+
+import threading
 
 import joblib
 import numpy as np
 import pandas as pd
 import torch
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report, confusion_matrix, f1_score, log_loss
 from xgboost import XGBClassifier
 
@@ -298,10 +300,39 @@ MODEL_FILE_MAP = {
     "mlp": FINAL_MODELS_DIR / "mlp-model.pt",
 }
 
+STATE_LOCK = threading.Lock()
+STATE: Dict[str, object] = {
+    "ready": False,
+    "error": None,
+    "models": None,
+    "stages": None,
+    "frames": None,
+    "model_order": None,
+}
 
-available_models, stage_labels, SIMULATION_FRAMES, MODEL_ORDER = load_models_and_predictions()
+
+def _bootstrap_models() -> None:
+    try:
+        models, stages, frames, model_order = load_models_and_predictions()
+        with STATE_LOCK:
+            STATE["models"] = models
+            STATE["stages"] = stages
+            STATE["frames"] = frames
+            STATE["model_order"] = model_order
+            STATE["error"] = None
+            STATE["ready"] = True
+    except Exception as exc:  # pragma: no cover - defensive
+        with STATE_LOCK:
+            STATE["error"] = str(exc)
+            STATE["ready"] = False
+
 
 app = FastAPI(title="Sleep Stage Classification Dashboard")
+
+
+@app.on_event("startup")
+async def schedule_bootstrap() -> None:
+    threading.Thread(target=_bootstrap_models, daemon=True).start()
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -311,8 +342,22 @@ async def index() -> HTMLResponse:
 
 @app.get("/api/models")
 async def list_models():
+    with STATE_LOCK:
+        ready = STATE["ready"]
+        error = STATE["error"]
+        models = STATE["models"]
+        stages = STATE["stages"]
+
+    if not ready:
+        status = 500 if error else 202
+        payload = {"status": "error", "detail": error} if error else {"status": "loading"}
+        return JSONResponse(payload, status_code=status)
+
     payload = []
-    for key, entry in available_models.items():
+    models_dict = cast(Dict[str, ModelEntry], models)
+    stages_list = cast(List[str], stages)
+
+    for key, entry in models_dict.items():
         stage_metrics = {
             stage: {
                 "precision": entry.classification_report.get(stage, {}).get("precision", 0.0),
@@ -320,7 +365,7 @@ async def list_models():
                 "f1": entry.classification_report.get(stage, {}).get("f1-score", 0.0),
                 "support": int(entry.classification_report.get(stage, {}).get("support", 0.0)),
             }
-            for stage in stage_labels
+            for stage in stages_list
         }
         payload.append(
             {
@@ -332,16 +377,26 @@ async def list_models():
                 "confusion_matrix": entry.confusion,
             }
         )
-    return {"stages": stage_labels, "models": payload}
+    return {"status": "ready", "stages": stages_list, "models": payload}
 
 
 @app.get("/api/simulation")
 async def simulation():
-    if not SIMULATION_FRAMES:
-        raise HTTPException(status_code=500, detail="Simulation data unavailable")
+    with STATE_LOCK:
+        ready = STATE["ready"]
+        error = STATE["error"]
+        frames = STATE["frames"]
+        model_order = STATE["model_order"]
+
+    if not ready:
+        status = 500 if error else 202
+        payload = {"status": "error", "detail": error} if error else {"status": "loading"}
+        return JSONResponse(payload, status_code=status)
+
     return {
-        "models": MODEL_ORDER,
-        "frames": SIMULATION_FRAMES,
+        "status": "ready",
+        "models": cast(List[Dict[str, str]], model_order),
+        "frames": cast(List[Dict[str, object]], frames),
     }
 
 
@@ -426,6 +481,19 @@ CLIENT_HTML = """
 
     async function fetchModels() {
       const response = await fetch('/api/models');
+      if (response.status === 202) {
+        metricsContainer.innerHTML = '<p>Loading models…</p>';
+        stageMetricsContainer.innerHTML = '';
+        controlsContainer.innerHTML = '';
+        setTimeout(fetchModels, 2000);
+        return;
+      }
+      if (!response.ok) {
+        metricsContainer.innerHTML = `<p class="incorrect">Unable to load models (status ${response.status}).</p>`;
+        stageMetricsContainer.innerHTML = '';
+        controlsContainer.innerHTML = '';
+        return;
+      }
       const payload = await response.json();
       renderMetrics(payload.models);
       renderPerStageMetrics(payload.models, payload.stages);
@@ -448,8 +516,12 @@ CLIENT_HTML = """
       logEl.innerHTML = '';
       appendLog('Starting combined simulation...');
       const response = await fetch('/api/simulation');
+      if (response.status === 202) {
+        appendLog('Models are still loading. Please wait a moment.', 'incorrect');
+        return;
+      }
       if (!response.ok) {
-        appendLog('Unable to load simulation data.', 'incorrect');
+        appendLog(`Unable to load simulation data (status ${response.status}).`, 'incorrect');
         return;
       }
       const payload = await response.json();

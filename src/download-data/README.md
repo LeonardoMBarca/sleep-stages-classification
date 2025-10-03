@@ -1,168 +1,85 @@
-# Sleep-EDF Download API
+# Sleep-EDF Download Service
 
-API for automatic download of the **Sleep-EDF** dataset files from the [PhysioNet](https://physionet.org/) repository.
+This module exposes a FastAPI service that plans and downloads Sleep-EDFx recordings from PhysioNet. It handles resume, transient failures, and hash-based deduplication so you can safely re-run the ingestion step without clobbering previously processed files.
 
-## 🚀 Installation and Execution
+---
+
+## Quick Start
 
 ```bash
-# 1. Install dependencies
+cd src/download-data
 pip install -r requirements.txt
-
-# 2. Run the server
-python main.py
-
-# Or using uvicorn directly
 uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Access the interactive documentation: http://127.0.0.1:8000/docs
+Open the interactive docs at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs) to explore the available endpoints.
 
-## 📋 API Routes
+> **Tip:** The service writes to `datalake/raw/` relative to the project root. Make sure the directory exists or let the API create it on first run.
 
-### GET `/download/`
-Downloads the Sleep-EDF files.
+---
 
-**Parameters:**
-- `subset` (string): `"cassette"`, `"telemetry"`, or `"both"` (default: `"cassette"`)
-- `ignore_hash` (bool): Ignore file hash verification (default: `false`)
-- `limit` (int): Limit the number of files to download (optional)
-- `sync` (bool): Synchronous execution (blocks until complete) (default: `true`)
-- `workers` (int): Number of parallel workers (1-8) (optional)
-- `batch_size` (int): Batch size per worker (optional)
-- `round_retries` (int): Retry attempts (0-8) (default: `3`)
+## Endpoints
 
-### GET `/status/`
-Checks the status of local files.
+### `GET /download`
 
-**Parameters:**
-- `subset` (string): `"cassette"`, `"telemetry"`, or `"both"` (default: `"both"`)
+Plan the download for a subset and optionally execute it synchronously.
 
-## 💻 Terminal Usage Examples
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `subset` | `cassette` \| `telemetry` \| `both` | `cassette` | Which Sleep-EDFx cohort to fetch |
+| `ignore_hash` | bool | `false` | Ignore processed-file hashes (forces redownload) |
+| `limit` | int | — | Limit number of files per subset |
+| `sync` | bool | `true` | Block until completion; set `false` to run in background |
+| `workers` | int (1–8) | auto | Number of parallel download workers |
+| `batch_size` | int | auto | How many files each round dispatches |
+| `round_retries` | int (0–8) | `3` | How many retry rounds for transient errors |
 
-### Check Status
+Synchronous calls return a full log of downloaded files; asynchronous calls return immediately with the planned work so you can monitor separately.
+
+### `GET /status`
+
+Report which files already exist locally and which are still missing.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `subset` | `cassette` \| `telemetry` \| `both` | `both` | Which cohorts to inspect |
+
+---
+
+## File Layout
+
+Downloaded artefacts follow this structure:
+
+```
+datalake/
+└── raw/
+    ├── sleep-cassette/    # PSG & annotation EDF files for SC*
+    └── sleep-telemetry/   # PSG & annotation EDF files for ST*
+```
+
+Processed layers and modelling-ready parquets are produced by the `data-processing` pipeline (see project root README for next steps).
+
+---
+
+## Example Calls
+
 ```bash
-# Status of both subsets
-curl "http://localhost:8000/status/"
+# Fetch the first 50 telemetry recordings using 6 workers
+curl "http://localhost:8000/download?subset=telemetry&limit=50&workers=6"
 
-# Status of sleep-cassette only
-curl "http://localhost:8000/status/?subset=cassette"
+# Start a background job for both subsets, custom batch size
+curl "http://localhost:8000/download?subset=both&workers=6&batch_size=12&sync=false"
 
-# Status of sleep-telemetry only
-curl "http://localhost:8000/status/?subset=telemetry"
+# Inspect which cassette nights remain missing
+curl "http://localhost:8000/status?subset=cassette"
 ```
 
-### Basic Download
-```bash
-# Download sleep-cassette (default)
-curl "http://localhost:8000/download/"
+---
 
-# Download sleep-telemetry
-curl "http://localhost:8000/download/?subset=telemetry"
+## Implementation Notes
 
-# Download both subsets
-curl "http://localhost:8000/download/?subset=both"
-```
+- The planner scrapes PhysioNet’s directory listing, compares it with local files, and checks previously processed hashes so you never redownload files that were already converted to parquet.
+- Downloads use `requests` with connection pooling, partial downloads, and exponential backoff. Common transient HTTP errors (429/5xx, timeouts) trigger automatic retries.
+- Logs appear in stdout detailing progress (percentage, MB/s) and final throughput.
 
-### Download with 6 Workers
-
-#### Sleep-Cassette with 6 Workers
-```bash
-# Synchronous (blocks until complete)
-curl "http://localhost:8000/download/?subset=cassette&workers=6"
-
-# Asynchronous (non-blocking)
-curl "http://localhost:8000/download/?subset=cassette&workers=6&sync=false"
-
-# With custom batch_size
-curl "http://localhost:8000/download/?subset=cassette&workers=6&batch_size=10"
-```
-
-#### Sleep-Telemetry with 6 Workers
-```bash
-# Synchronous
-curl "http://localhost:8000/download/?subset=telemetry&workers=6"
-
-# Asynchronous
-curl "http://localhost:8000/download/?subset=telemetry&workers=6&sync=false"
-
-# With custom retries
-curl "http://localhost:8000/download/?subset=telemetry&workers=6&round_retries=5"
-```
-
-#### Both Subsets with 6 Workers
-```bash
-# Complete download with 6 workers
-curl "http://localhost:8000/download/?subset=both&workers=6"
-
-# Asynchronous with custom settings
-curl "http://localhost:8000/download/?subset=both&workers=6&batch_size=8&sync=false"
-```
-
-### Advanced Examples
-```bash
-# Ignore hash verification
-curl "http://localhost:8000/download/?subset=cassette&workers=6&ignore_hash=true"
-
-# Limit to 50 files
-curl "http://localhost:8000/download/?subset=telemetry&workers=6&limit=50"
-
-# Complete configuration
-curl "http://localhost:8000/download/?subset=both&workers=6&batch_size=12&round_retries=2&sync=false&ignore_hash=false"
-```
-
-## 📁 File Structure
-
-Files are saved in:
-```
-datalake/raw/
-├── sleep-cassette/ # Cassette subset files
-└── sleep-telemetry/ # Telemetry subset files
-```
-
-## 📊 API Response
-
-### Synchronous Download (sync=true)
-```json
-{ 
-  "status": "completed", 
-  "subset": "cassette", 
-  "ignore_hash": false, 
-  "plan": [ 
-    { 
-      "subset": "cassette", 
-      "missing_count": 153, 
-      "missing_samples": ["SC4001E0", "SC4002E0", ...], 
-      "base_url": "https://physionet.org/..." 
-    } 
-  ], 
-  "results": { 
-  "cassette": ["Downloaded: SC4001E0-PSG.edf", ...] 
-  }, 
-  "raw_dir": "/path/to/datalake/raw"
-}
-```
-
-### Asynchronous Download (sync=false)
-```json
-{ 
-  "status": "started", 
-  "subset": "cassette", 
-  "ignore_hash": false, 
-  "plan": [ 
-    { 
-      "subset": "cassette", 
-      "missing_count": 153, 
-      "missing_samples": ["SC4001E0", "SC4002E0", ...], 
-      "base_url": "https://physionet.org/..." 
-    } 
-  ], 
-  "raw_dir": "/path/to/datalake/raw"
-}
-```
-
-## ⚡ Performance
-
-- **Workers**: Controls parallelism (recommended: 4-6)
-- **Batch Size**: Files per worker per batch (recommended: 8-12)
-- **Sync vs Async**: Use `sync=false` for long downloads
-- **Hash Check**: Use `ignore_hash=true` to skip checking (faster)
+For deeper context on how these raw files feed the modelling pipeline, refer back to the project-level [README](../../README.md).

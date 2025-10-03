@@ -140,7 +140,7 @@ def train_random_forest(
     sample_weight: np.ndarray,
 ) -> RandomForestClassifier:
     model = RandomForestClassifier(
-        n_estimators=300,
+        n_estimators=200,
         max_depth=26,
         min_samples_split=5,
         min_samples_leaf=2,
@@ -202,7 +202,7 @@ def train_xgboost(
         num_class=len(np.unique(y_train)),
         learning_rate=0.045,
         max_depth=8,
-        n_estimators=1600,
+        n_estimators=1300,
         subsample=0.85,
         colsample_bytree=0.7,
         min_child_weight=3,
@@ -391,7 +391,7 @@ def main(force: bool = False) -> None:
 
     X_train, X_val, X_test = scale_frames(scaler, [df_train, df_val, df_test], features)
 
-    joblib.dump(scaler, FINAL_MODELS_DIR / "scaler.pkl")
+    joblib.dump(scaler, FINAL_MODELS_DIR / "scaler.pkl", compress=3)
     save_json(FINAL_MODELS_DIR / "feature_order.json", features)
     save_json(FINAL_MODELS_DIR / "stage_mapping.json", stage_labels)
 
@@ -401,7 +401,7 @@ def main(force: bool = False) -> None:
     logistic_path = FINAL_MODELS_DIR / "logistic-regression-model.pkl"
     if force or not logistic_path.exists():
         lr_model = train_logistic_regression(X_train, y_train, train_weights)
-        joblib.dump(lr_model, logistic_path)
+        joblib.dump(lr_model, logistic_path, compress=3)
     else:
         lr_model = joblib.load(logistic_path)
     lr_proba = lr_model.predict_proba(X_test)
@@ -412,7 +412,7 @@ def main(force: bool = False) -> None:
     nb_path = FINAL_MODELS_DIR / "naive-bayes-model.pkl"
     if force or not nb_path.exists():
         nb_model = train_naive_bayes(X_train, y_train, X_val, y_val, train_weights)
-        joblib.dump(nb_model, nb_path)
+        joblib.dump(nb_model, nb_path, compress=3)
     else:
         nb_model = joblib.load(nb_path)
     nb_proba = nb_model.predict_proba(X_test)
@@ -423,7 +423,7 @@ def main(force: bool = False) -> None:
     rf_path = FINAL_MODELS_DIR / "random-forest-model.pkl"
     if force or not rf_path.exists():
         rf_model = train_random_forest(X_train, y_train, train_weights)
-        joblib.dump(rf_model, rf_path)
+        joblib.dump(rf_model, rf_path, compress=3)
     else:
         rf_model = joblib.load(rf_path)
     rf_proba = rf_model.predict_proba(X_test)
@@ -434,7 +434,7 @@ def main(force: bool = False) -> None:
     lgb_path = FINAL_MODELS_DIR / "lightgbm-model.pkl"
     if force or not lgb_path.exists():
         lgb_model = train_lightgbm(X_train, y_train, X_val, y_val, train_weights, val_weights)
-        joblib.dump(lgb_model, lgb_path)
+        joblib.dump(lgb_model, lgb_path, compress=3)
     else:
         lgb_model = joblib.load(lgb_path)
     iter_lgb = lgb_model.best_iteration_ or lgb_model.n_estimators_

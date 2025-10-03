@@ -1,0 +1,8 @@
+{
+  "depth": 4,
+  "dropout": 0.2,
+  "expansion": 1.4,
+  "hidden_dim": 384,
+  "input_dim": 59,
+  "num_classes": 5
+}
