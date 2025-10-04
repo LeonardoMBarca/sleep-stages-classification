@@ -1,0 +1,66 @@
+/* KPI Cards */
+.kpi-card {
+	border: none;
+	box-shadow: 0 2px 8px rgba(31,111,235,0.07);
+	margin-bottom: 0.5rem;
+}
+.kpi-label {
+	font-size: 1.05rem;
+	color: #888;
+	margin-bottom: 0.2rem;
+}
+.kpi-value {
+	font-weight: 600;
+	color: #1f6feb;
+}
+
+@media (max-width: 991px) {
+	.kpi-card { margin-bottom: 1rem; }
+}
+/* Custom dashboard styles */
+body {
+	background: #f7f9fc;
+}
+.navbar {
+	box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+}
+.card {
+	border-radius: 12px;
+}
+.card-header {
+	border-top-left-radius: 12px;
+	border-top-right-radius: 12px;
+}
+table {
+	font-size: 0.97rem;
+}
+th, td {
+	vertical-align: middle !important;
+}
+.log {
+	font-size: 1rem;
+	background: #181c20 !important;
+	color: #00e676 !important;
+	min-height: 180px;
+	max-height: 350px;
+	overflow-y: auto;
+}
+.log .correct {
+	color: #4caf50 !important;
+}
+.log .incorrect {
+	color: #f44336 !important;
+}
+.btn-primary {
+	background: #1f6feb;
+	border: none;
+}
+.btn-primary:hover {
+	background: #155ab6;
+}
+.table thead th {
+	background: #eef2f9;
+}
+.table-striped tbody tr:nth-of-type(odd) {
+	background-color: #f2f6fa;
+}

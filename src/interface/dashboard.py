@@ -1,3 +1,5 @@
+
+from __future__ import annotations
 """Interactive dashboard API for comparing trained sleep-stage models.
 
 The application exposes a FastAPI server that
@@ -20,9 +22,7 @@ The HTML served at ``/`` consumes two endpoints:
     Streams the combined epoch-by-epoch predictions for a multi-model
     animation covering the first slices of two test subjects.
 """
-
-from __future__ import annotations
-
+from fastapi import Query
 import json
 from pathlib import Path
 from typing import Dict, List, cast
@@ -34,7 +34,8 @@ import numpy as np
 import pandas as pd
 import torch
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from sklearn.metrics import accuracy_score, balanced_accuracy_score, classification_report, confusion_matrix, f1_score, log_loss
 from xgboost import XGBClassifier
 
@@ -327,7 +328,12 @@ def _bootstrap_models() -> None:
             STATE["ready"] = False
 
 
+
 app = FastAPI(title="Sleep Stage Classification Dashboard")
+
+# Serve arquivos estáticos (html, css, js)
+STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 @app.on_event("startup")
@@ -336,8 +342,9 @@ async def schedule_bootstrap() -> None:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def index() -> HTMLResponse:
-    return HTMLResponse(CLIENT_HTML)
+async def index():
+    index_path = STATIC_DIR / "index.html"
+    return FileResponse(index_path)
 
 
 @app.get("/api/models")
@@ -399,157 +406,44 @@ async def simulation():
         "frames": cast(List[Dict[str, object]], frames),
     }
 
-
-CLIENT_HTML = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <title>Sleep Stage Classification Dashboard</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 2rem; background: #f7f9fc; color: #222; }
-    h1 { margin-bottom: 0.5rem; }
-    table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
-    th, td { border: 1px solid #d4dce6; padding: 0.5rem; text-align: center; }
-    th { background: #eef2f9; }
-    button { padding: 0.4rem 1rem; margin: 0.3rem; border: none; border-radius: 4px; background: #1f6feb; color: #fff; cursor: pointer; }
-    button:disabled { background: #ccc; cursor: default; }
-    .simulation { margin-top: 2rem; }
-    .log { background: #111; color: #0f0; padding: 1rem; min-height: 180px; overflow-y: auto; font-family: "Courier New", monospace; }
-    .correct { color: #4caf50; }
-    .incorrect { color: #f44336; }
-  </style>
-</head>
-<body>
-  <h1>Sleep Stage Classification Dashboard</h1>
-  <p>This dashboard replays the predictions produced by the final trained models on the held-out test set.</p>
-
-  <section id="metrics"></section>
-  <section id="stage-metrics"></section>
-
-  <section class="simulation">
-    <h2>Epoch Simulation</h2>
-    <p>Replay the first epochs from two different subjects and compare all models frame by frame.</p>
-    <div id="controls"></div>
-    <div class="log" id="log"></div>
-  </section>
-
-  <script>
-    const metricsContainer = document.getElementById('metrics');
-    const stageMetricsContainer = document.getElementById('stage-metrics');
-    const controlsContainer = document.getElementById('controls');
-    const logEl = document.getElementById('log');
-    let modelCatalog = [];
-    let simulationHandle = null;
-
-    function renderMetrics(models) {
-      let html = '<table><thead><tr><th>Model</th><th>Accuracy</th><th>Balanced Acc.</th><th>Macro F1</th><th>Log Loss</th></tr></thead><tbody>';
-      models.forEach(model => {
-        html += `<tr><td>${model.name}</td><td>${model.metrics.accuracy.toFixed(3)}</td>`;
-        html += `<td>${model.metrics.balanced_accuracy.toFixed(3)}</td>`;
-        html += `<td>${model.metrics.macro_f1.toFixed(3)}</td>`;
-        html += `<td>${model.metrics.loss.toFixed(3)}</td></tr>`;
-      });
-      html += '</tbody></table>';
-      metricsContainer.innerHTML = html;
+@app.get("/api/probabilities")
+async def get_probabilities(model: str = Query(...)):
+    with STATE_LOCK:
+        ready = STATE["ready"]
+        error = STATE["error"]
+        models = STATE["models"]
+        stages = STATE["stages"]
+    if not ready:
+        status = 500 if error else 202
+        payload = {"status": "error", "detail": error} if error else {"status": "loading"}
+        return JSONResponse(payload, status_code=status)
+    models_dict = cast(Dict[str, ModelEntry], models)
+    stages_list = cast(List[str], stages)
+    entry = models_dict.get(model)
+    if not entry or not hasattr(entry.model, "predict_proba"):
+        return JSONResponse({"status": "error", "detail": "Modelo não encontrado ou não suporta probabilidades."}, status_code=400)
+    # Recalcular X_test para garantir alinhamento
+    scaler_path = FINAL_MODELS_DIR / "scaler.pkl"
+    features_path = FINAL_MODELS_DIR / "feature_order.json"
+    stages_path = FINAL_MODELS_DIR / "stage_mapping.json"
+    scaler = joblib.load(scaler_path)
+    feature_order = load_json(features_path)
+    stage_labels = load_json(stages_path)
+    df_test = load_dataset()
+    y_test = df_test["stage"].map({stage: idx for idx, stage in enumerate(stage_labels)}).to_numpy(dtype=np.int64)
+    X_test = scaler.transform(df_test[feature_order]).astype(np.float32)
+    if entry.name == "mlp":
+        with torch.no_grad():
+            logits = entry.model(torch.from_numpy(X_test))
+            proba = torch.softmax(logits, dim=1).numpy()
+    elif entry.name == "lightgbm":
+        frame = pd.DataFrame(X_test, columns=feature_order)
+        proba = entry.model.predict_proba(frame)
+    else:
+        proba = entry.model.predict_proba(X_test)
+    return {
+        "status": "ready",
+        "y_true": y_test.tolist(),
+        "proba": proba.tolist(),
+        "stages": stages_list
     }
-
-    function renderPerStageMetrics(models, stages) {
-      let html = '<table><thead><tr><th>Model</th><th>Stage</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead><tbody>';
-      models.forEach(model => {
-        stages.forEach(stage => {
-          const stats = model.stage_metrics[stage];
-          html += `<tr><td>${model.name}</td><td>${stage}</td>`;
-          html += `<td>${stats.precision.toFixed(3)}</td>`;
-          html += `<td>${stats.recall.toFixed(3)}</td>`;
-          html += `<td>${stats.f1.toFixed(3)}</td>`;
-          html += `<td>${stats.support}</td></tr>`;
-        });
-      });
-      html += '</tbody></table>';
-      stageMetricsContainer.innerHTML = '<h2>Stage-level Metrics</h2>' + html;
-    }
-
-    function setupControls(models) {
-      modelCatalog = models;
-      controlsContainer.innerHTML = '';
-      const button = document.createElement('button');
-      button.textContent = 'Play combined simulation';
-      button.onclick = () => startSimulation();
-      controlsContainer.appendChild(button);
-    }
-
-    async function fetchModels() {
-      const response = await fetch('/api/models');
-      if (response.status === 202) {
-        metricsContainer.innerHTML = '<p>Loading models…</p>';
-        stageMetricsContainer.innerHTML = '';
-        controlsContainer.innerHTML = '';
-        setTimeout(fetchModels, 2000);
-        return;
-      }
-      if (!response.ok) {
-        metricsContainer.innerHTML = `<p class="incorrect">Unable to load models (status ${response.status}).</p>`;
-        stageMetricsContainer.innerHTML = '';
-        controlsContainer.innerHTML = '';
-        return;
-      }
-      const payload = await response.json();
-      renderMetrics(payload.models);
-      renderPerStageMetrics(payload.models, payload.stages);
-      setupControls(payload.models);
-    }
-
-    function appendLog(message, cls = '') {
-      const line = document.createElement('div');
-      if (cls) line.classList.add(cls);
-      line.textContent = message;
-      logEl.appendChild(line);
-      logEl.scrollTop = logEl.scrollHeight;
-    }
-
-    async function startSimulation() {
-      if (simulationHandle) {
-        clearInterval(simulationHandle);
-        simulationHandle = null;
-      }
-      logEl.innerHTML = '';
-      appendLog('Starting combined simulation...');
-      const response = await fetch('/api/simulation');
-      if (response.status === 202) {
-        appendLog('Models are still loading. Please wait a moment.', 'incorrect');
-        return;
-      }
-      if (!response.ok) {
-        appendLog(`Unable to load simulation data (status ${response.status}).`, 'incorrect');
-        return;
-      }
-      const payload = await response.json();
-      const frames = payload.frames;
-      const models = payload.models;
-      let index = 0;
-      simulationHandle = setInterval(() => {
-        if (index >= frames.length) {
-          appendLog('Simulation finished.');
-          clearInterval(simulationHandle);
-          simulationHandle = null;
-          return;
-        }
-        const frame = frames[index];
-        const parts = models.map(model => {
-          const info = frame.predictions[model.id];
-          const mark = info.correct ? '✓' : '✗';
-          return `${model.name}: ${info.predicted} ${mark}`;
-        });
-        const allCorrect = models.every(model => frame.predictions[model.id].correct);
-        const status = allCorrect ? 'correct' : 'incorrect';
-        appendLog(`Subject ${frame.subject_id} (night ${frame.night_id}) | Epoch ${frame.epoch_idx} | Actual ${frame.actual} | ${parts.join(' | ')}`, status);
-        index += 1;
-      }, 200);
-    }
-
-    fetchModels();
-  </script>
-</body>
-</html>
-"""

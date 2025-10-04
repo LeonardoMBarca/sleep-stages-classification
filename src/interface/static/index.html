@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sleep Stage Classification Dashboard</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-light">
+  <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1">Sleep Stage Classification Dashboard</span>
+    </div>
+  </nav>
+  <div class="container">
+    <div id="overview">
+      <div class="row g-3 mb-4">
+        <!-- Confusion Matrix no topo -->
+        <div class="col-12 col-lg-7 order-1 order-lg-1">
+          <div class="card shadow-sm mb-3">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2">
+              <h6 class="mb-0">Confusion Matrix</h6>
+              <select id="confusionModelSelect" class="form-select form-select-sm w-auto ms-2"></select>
+            </div>
+            <div class="card-body p-2">
+              <div id="confusionMatrixTable"></div>
+            </div>
+          </div>
+        </div>
+        <!-- KPIs ao lado -->
+        <div class="col-12 col-lg-5 order-2 order-lg-2 d-flex flex-column gap-2">
+          <div class="card text-center kpi-card small-card mb-2" id="kpi-accuracy">
+            <div class="card-body py-2">
+              <div class="kpi-label small">Accuracy</div>
+              <div class="kpi-value h4 mb-0" id="kpi-accuracy-value">-</div>
+            </div>
+          </div>
+          <div class="card text-center kpi-card small-card mb-2" id="kpi-f1">
+            <div class="card-body py-2">
+              <div class="kpi-label small">Macro F1</div>
+              <div class="kpi-value h4 mb-0" id="kpi-f1-value">-</div>
+            </div>
+          </div>
+          <div class="card text-center kpi-card small-card mb-2" id="kpi-balanced">
+            <div class="card-body py-2">
+              <div class="kpi-label small">Balanced Acc.</div>
+              <div class="kpi-value h4 mb-0" id="kpi-balanced-value">-</div>
+            </div>
+          </div>
+          <div class="card text-center kpi-card small-card" id="kpi-loss">
+            <div class="card-body py-2">
+              <div class="kpi-label small">Log Loss</div>
+              <div class="kpi-value h4 mb-0" id="kpi-loss-value">-</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="row g-3 mb-4">
+        <!-- Model Performance Overview e Stage-level Metrics -->
+        <div class="col-12 col-lg-8">
+          <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white">
+              <h5 class="mb-0">Model Performance Overview</h5>
+            </div>
+            <div class="card-body" id="metrics">
+              <canvas id="metricsBarChart" height="120"></canvas>
+              <div id="metrics-table"></div>
+            </div>
+          </div>
+          <!-- Ranking visual dos modelos -->
+          <div class="card shadow-sm mb-4">
+            <div class="card-header bg-secondary text-white d-flex align-items-center">
+              <h6 class="mb-0">Ranking dos Modelos</h6>
+            </div>
+            <div class="card-body" id="model-ranking"></div>
+          </div>
+          <!-- Classification report detalhado -->
+          <div class="card shadow-sm mb-4">
+            <div class="card-header bg-secondary text-white d-flex align-items-center">
+              <h6 class="mb-0">Classification Report Detalhado</h6>
+              <select id="classificationModelSelect" class="form-select form-select-sm w-auto ms-2"></select>
+            </div>
+            <div class="card-body" id="classification-report-table"></div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-4">
+          <div class="card shadow-sm mb-4">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Stage-level Metrics</h5>
+            </div>
+            <div class="card-body" id="stage-metrics">
+              <!-- Stage metrics table will be rendered -->
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+      <div class="row mb-4">
+        <div class="col-12">
+          <div class="card shadow-sm">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+              <h5 class="mb-0">Epoch Simulation</h5>
+              <div id="controls"></div>
+            </div>
+            <div class="card-body">
+              <p class="text-muted">Replay the first epochs from two different subjects and compare all models frame by frame.</p>
+              <div class="log bg-dark text-success p-3 rounded" id="log" style="min-height:180px; font-family:monospace; overflow-y:auto;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <footer class="text-center text-muted mt-4 mb-2">
+      <small>Developed by Sleep Stages Team &copy; 2025</small>
+    </footer>
+  </div>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="/static/script.js"></script>
+</body>
+</html>
