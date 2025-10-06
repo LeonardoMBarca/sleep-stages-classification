@@ -233,15 +233,16 @@ function renderClassificationModelSelect(models, onChange) {
 	}
 // Dashboard JS: renderiza métricas, simulação e controles
 
-document.addEventListener('DOMContentLoaded', function() {
+	document.addEventListener('DOMContentLoaded', function() {
 	const metricsContainer = document.getElementById('metrics');
 	const metricsTableContainer = document.getElementById('metrics-table');
 	const metricsBarChartCanvas = document.getElementById('metricsBarChart');
-	const stageMetricsContainer = document.getElementById('stage-metrics');
 	const controlsContainer = document.getElementById('controls');
 	const logEl = document.getElementById('log');
 	let simulationHandle = null;
 	let metricsBarChart = null;
+	let playButton = null;
+	let stopButton = null;
 
 	function renderMetrics(models) {
 		// Render tabela
@@ -309,50 +310,42 @@ document.addEventListener('DOMContentLoaded', function() {
 		}
 	}
 
-	function renderPerStageMetrics(models, stages) {
-		let html = '<table class="table table-sm table-bordered align-middle"><thead><tr><th>Model</th><th>Stage</th><th>Precision</th><th>Recall</th><th>F1</th><th>Support</th></tr></thead><tbody>';
-		models.forEach(model => {
-			stages.forEach(stage => {
-				const stats = model.stage_metrics[stage];
-				html += `<tr><td>${model.name}</td><td>${stage}</td>`;
-				html += `<td>${stats.precision.toFixed(3)}</td>`;
-				html += `<td>${stats.recall.toFixed(3)}</td>`;
-				html += `<td>${stats.f1.toFixed(3)}</td>`;
-				html += `<td>${stats.support}</td></tr>`;
-			});
-		});
-		html += '</tbody></table>';
-		stageMetricsContainer.innerHTML = html;
+	function setSimulationRunning(running) {
+		if (playButton) playButton.disabled = running;
+		if (stopButton) stopButton.disabled = !running;
 	}
 
-	function setupControls(models) {
+	function setupControls() {
 		controlsContainer.innerHTML = '';
-		const button = document.createElement('button');
-		button.className = 'btn btn-primary';
-		button.textContent = 'Play Combined Simulation';
-		button.onclick = () => startSimulation();
-		controlsContainer.appendChild(button);
+		playButton = document.createElement('button');
+		playButton.className = 'btn btn-primary me-2';
+		playButton.textContent = 'Iniciar simulação completa';
+		playButton.onclick = () => startSimulation();
+		stopButton = document.createElement('button');
+		stopButton.className = 'btn btn-outline-secondary';
+		stopButton.textContent = 'Parar';
+		stopButton.disabled = true;
+		stopButton.onclick = () => stopSimulation('<span class="badge bg-secondary text-dark">Simulação interrompida pelo usuário.</span>');
+		controlsContainer.appendChild(playButton);
+		controlsContainer.appendChild(stopButton);
 	}
 
 			async function fetchModels() {
 				const response = await fetch('/api/models');
 				if (response.status === 202) {
-					metricsContainer.innerHTML = '<div class="text-center text-muted py-3">Carregando modelos…</div>';
-					stageMetricsContainer.innerHTML = '';
-					controlsContainer.innerHTML = '';
+				metricsContainer.innerHTML = '<div class="text-center text-muted py-3">Carregando modelos…</div>';
+				controlsContainer.innerHTML = '';
 					setTimeout(fetchModels, 2000);
 					return;
 				}
 				if (!response.ok) {
 					metricsContainer.innerHTML = `<div class="alert alert-danger">Erro ao carregar modelos (status ${response.status}).</div>`;
-					stageMetricsContainer.innerHTML = '';
 					controlsContainer.innerHTML = '';
 					return;
 				}
 				const payload = await response.json();
 				renderMetrics(payload.models);
-				renderPerStageMetrics(payload.models, payload.stages);
-				setupControls(payload.models);
+				setupControls();
 				// KPIs e Confusion matrix
 				let selectedModelId = payload.models[0]?.id;
 				renderKPI(payload.models, selectedModelId);
@@ -395,26 +388,42 @@ document.addEventListener('DOMContentLoaded', function() {
 				clearInterval(simulationHandle);
 				simulationHandle = null;
 			}
+			setSimulationRunning(true);
 			logEl.innerHTML = '';
-			appendLog('<span class="badge bg-primary">Iniciando simulação combinada...</span>', '', true);
-			const response = await fetch('/api/simulation');
+			appendLog('<span class="badge bg-primary">Iniciando simulação completa...</span>', '', true);
+			let response;
+			try {
+				response = await fetch('/api/simulation');
+			} catch (error) {
+				appendLog('<span class="badge bg-danger">Erro de conexão ao iniciar a simulação.</span>', 'incorrect', true);
+				setSimulationRunning(false);
+				return;
+			}
 			if (response.status === 202) {
 				appendLog('<span class="badge bg-warning text-dark">Modelos ainda carregando. Aguarde um momento.</span>', 'incorrect', true);
+				setSimulationRunning(false);
 				return;
 			}
 			if (!response.ok) {
 				appendLog(`<span class="badge bg-danger">Erro ao carregar dados da simulação (status ${response.status}).</span>`, 'incorrect', true);
+				setSimulationRunning(false);
 				return;
 			}
 			const payload = await response.json();
 			const frames = payload.frames;
 			const models = payload.models;
+			if (!Array.isArray(frames) || frames.length === 0) {
+				appendLog('<span class="badge bg-warning text-dark">Nenhum dado disponível para simulação.</span>', 'incorrect', true);
+				setSimulationRunning(false);
+				return;
+			}
 			let index = 0;
 			simulationHandle = setInterval(() => {
 				if (index >= frames.length) {
 					appendLog('<span class="badge bg-success">Simulação finalizada.</span>', '', true);
 					clearInterval(simulationHandle);
 					simulationHandle = null;
+					setSimulationRunning(false);
 					return;
 				}
 				const frame = frames[index];
@@ -437,6 +446,17 @@ document.addEventListener('DOMContentLoaded', function() {
 				);
 				index += 1;
 			}, 200);
+		}
+
+		function stopSimulation(message = '') {
+			if (simulationHandle) {
+				clearInterval(simulationHandle);
+				simulationHandle = null;
+			}
+			setSimulationRunning(false);
+			if (message) {
+				appendLog(message, '', true);
+			}
 		}
 
 				fetchModels();

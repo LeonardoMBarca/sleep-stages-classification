@@ -57,8 +57,8 @@
         </div>
       </div>
       <div class="row g-3 mb-4">
-        <!-- Model Performance Overview e Stage-level Metrics -->
-        <div class="col-12 col-lg-8">
+        <!-- Model Performance Overview -->
+        <div class="col-12">
           <div class="card shadow-sm mb-4">
             <div class="card-header bg-primary text-white">
               <h5 class="mb-0">Model Performance Overview</h5>
@@ -84,16 +84,6 @@
             <div class="card-body" id="classification-report-table"></div>
           </div>
         </div>
-        <div class="col-12 col-lg-4">
-          <div class="card shadow-sm mb-4">
-            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-              <h5 class="mb-0">Stage-level Metrics</h5>
-            </div>
-            <div class="card-body" id="stage-metrics">
-              <!-- Stage metrics table will be rendered -->
-            </div>
-          </div>
-        </div>
       </div>
     </div>
       <div class="row mb-4">
@@ -104,7 +94,7 @@
               <div id="controls"></div>
             </div>
             <div class="card-body">
-              <p class="text-muted">Replay the first epochs from two different subjects and compare all models frame by frame.</p>
+              <p class="text-muted">Reproduza todos os epochs do conjunto de teste e compare os modelos em tempo real. Use os botões para iniciar ou parar a simulação.</p>
               <div class="log bg-dark text-success p-3 rounded" id="log" style="min-height:180px; font-family:monospace; overflow-y:auto;"></div>
             </div>
           </div>

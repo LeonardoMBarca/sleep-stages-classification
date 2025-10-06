@@ -20,7 +20,7 @@ The HTML served at ``/`` consumes two endpoints:
 
 ``GET /api/simulation``
     Streams the combined epoch-by-epoch predictions for a multi-model
-    animation covering the first slices of two test subjects.
+    animation that replays the full held-out test split.
 """
 from fastapi import Query
 import json
@@ -43,10 +43,6 @@ from xgboost import XGBClassifier
 BASE_PATH = Path(__file__).resolve().parents[2]
 FINAL_MODELS_DIR = BASE_PATH / "final-models"
 DATASET_ROOT = BASE_PATH / "datalake" / "data-for-model"
-SIMULATION_SUBJECTS = 2
-SIMULATION_EPOCHS_PER_SUBJECT = 200
-
-
 class ResidualBlock(torch.nn.Module):
     def __init__(self, dim: int, expansion: float, dropout: float) -> None:
         super().__init__()
@@ -243,15 +239,8 @@ def inference(entry: ModelEntry, X_test: np.ndarray, feature_order: List[str] | 
 
 def select_simulation_positions(df_test: pd.DataFrame) -> List[int]:
     df_sorted = df_test.assign(_pos=np.arange(len(df_test))).sort_values(["subject_id", "night_id", "epoch_idx"])
-    selected: List[int] = []
-    subjects_seen: List[str] = []
-    for subject_id, group in df_sorted.groupby("subject_id", sort=False):
-        rows = group.head(SIMULATION_EPOCHS_PER_SUBJECT)["_pos"].tolist()
-        selected.extend(rows)
-        subjects_seen.append(subject_id)
-        if len(subjects_seen) >= SIMULATION_SUBJECTS:
-            break
-    return selected
+    # Retorna todos os índices ordenados para que a simulação percorra o conjunto completo de teste.
+    return df_sorted["_pos"].tolist()
 
 
 def build_simulation_frames(
@@ -365,21 +354,11 @@ async def list_models():
     stages_list = cast(List[str], stages)
 
     for key, entry in models_dict.items():
-        stage_metrics = {
-            stage: {
-                "precision": entry.classification_report.get(stage, {}).get("precision", 0.0),
-                "recall": entry.classification_report.get(stage, {}).get("recall", 0.0),
-                "f1": entry.classification_report.get(stage, {}).get("f1-score", 0.0),
-                "support": int(entry.classification_report.get(stage, {}).get("support", 0.0)),
-            }
-            for stage in stages_list
-        }
         payload.append(
             {
                 "id": key,
                 "name": entry.display_name,
                 "metrics": entry.metrics,
-                "stage_metrics": stage_metrics,
                 "classification_report": entry.classification_report,
                 "confusion_matrix": entry.confusion,
             }

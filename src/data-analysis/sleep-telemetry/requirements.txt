@@ -1,1 +1,11 @@
-
+ipython
+jupyterlab
+matplotlib
+networkx
+numpy
+pandas
+polars
+pyarrow
+scikit-learn
+scipy
+seaborn

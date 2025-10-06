@@ -1,2 +1,11 @@
-fastapi>=0.110
-uvicorn[standard]>=0.23
+fastapi
+fastparquet
+joblib
+lightgbm
+numpy
+pandas
+scikit-learn
+scipy
+torch
+uvicorn[standard]
+xgboost

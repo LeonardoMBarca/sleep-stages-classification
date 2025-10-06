@@ -1,1 +1,6 @@
-
+fastparquet
+joblib
+numpy
+pandas
+pyarrow
+scikit-learn
