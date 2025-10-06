@@ -14,13 +14,23 @@
     </div>
   </nav>
   <div class="container">
+    <div class="mb-4">
+      <ul class="nav nav-pills" id="datasetTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+          <button class="nav-link active" type="button" data-dataset-button data-dataset="cassette">Sleep Cassette</button>
+        </li>
+        <li class="nav-item" role="presentation">
+          <button class="nav-link" type="button" data-dataset-button data-dataset="telemetry">Sleep Telemetry</button>
+        </li>
+      </ul>
+    </div>
     <div id="overview">
       <div class="row g-3 mb-4">
         <!-- Confusion Matrix no topo -->
         <div class="col-12 col-lg-7 order-1 order-lg-1">
           <div class="card shadow-sm mb-3">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center py-2">
-              <h6 class="mb-0">Confusion Matrix</h6>
+              <h6 class="mb-0">Confusion Matrix <span class="badge bg-light text-dark ms-2" data-dataset-label>Sleep Cassette</span></h6>
               <select id="confusionModelSelect" class="form-select form-select-sm w-auto ms-2"></select>
             </div>
             <div class="card-body p-2">
@@ -61,7 +71,7 @@
         <div class="col-12">
           <div class="card shadow-sm mb-4">
             <div class="card-header bg-primary text-white">
-              <h5 class="mb-0">Model Performance Overview</h5>
+              <h5 class="mb-0">Model Performance Overview <span class="badge bg-light text-dark ms-2" data-dataset-label>Sleep Cassette</span></h5>
             </div>
             <div class="card-body" id="metrics">
               <canvas id="metricsBarChart" height="120"></canvas>
@@ -71,14 +81,14 @@
           <!-- Ranking visual dos modelos -->
           <div class="card shadow-sm mb-4">
             <div class="card-header bg-secondary text-white d-flex align-items-center">
-              <h6 class="mb-0">Ranking dos Modelos</h6>
+              <h6 class="mb-0">Model Leaderboard <span class="badge bg-light text-dark ms-2" data-dataset-label>Sleep Cassette</span></h6>
             </div>
             <div class="card-body" id="model-ranking"></div>
           </div>
           <!-- Classification report detalhado -->
           <div class="card shadow-sm mb-4">
             <div class="card-header bg-secondary text-white d-flex align-items-center">
-              <h6 class="mb-0">Classification Report Detalhado</h6>
+              <h6 class="mb-0">Detailed Classification Report <span class="badge bg-light text-dark ms-2" data-dataset-label>Sleep Cassette</span></h6>
               <select id="classificationModelSelect" class="form-select form-select-sm w-auto ms-2"></select>
             </div>
             <div class="card-body" id="classification-report-table"></div>
@@ -90,11 +100,11 @@
         <div class="col-12">
           <div class="card shadow-sm">
             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-              <h5 class="mb-0">Epoch Simulation</h5>
+              <h5 class="mb-0">Epoch Simulation <span class="badge bg-light text-dark ms-2" data-dataset-label>Sleep Cassette</span></h5>
               <div id="controls"></div>
             </div>
             <div class="card-body">
-              <p class="text-muted">Reproduza todos os epochs do conjunto de teste e compare os modelos em tempo real. Use os botões para iniciar ou parar a simulação.</p>
+              <p class="text-muted">Replay every test epoch to compare models in real time. Use the buttons to start or stop the simulation.</p>
               <div class="log bg-dark text-success p-3 rounded" id="log" style="min-height:180px; font-family:monospace; overflow-y:auto;"></div>
             </div>
           </div>

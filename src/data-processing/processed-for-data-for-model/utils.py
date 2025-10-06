@@ -66,8 +66,8 @@ def stratified_subject_split_by_quotas(
             start += q
 
     all_assigned = sum((assign[k] for k in assign), [])
-    assert len(all_assigned) == len(set(all_assigned)), "Leakage: sujeito em múltiplos splits"
-    assert set(all_assigned) == set(sdf["subject_id"]), "Faltam sujeitos alocados"
+    assert len(all_assigned) == len(set(all_assigned)), "Leakage: subject assigned to multiple splits"
+    assert set(all_assigned) == set(sdf["subject_id"]), "Missing subjects in split allocation"
 
     return assign
 
@@ -214,7 +214,7 @@ def add_rolling_features_sleep_fast(
 
         new_cols_all.extend(col_new)
 
-    # concat em blocos para evitar fragmentação
+    # concatenate in blocks to avoid fragmentation
     for i in range(0, len(new_cols_all), batch_size):
         df_sorted = pd.concat([df_sorted, pd.concat(new_cols_all[i:i+batch_size], axis=1)], axis=1)
 

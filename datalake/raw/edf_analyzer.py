@@ -25,10 +25,10 @@ def _decode_label(x):
 
 def scan_dir_hyp(p, preview_n=10):
     """
-    Lê todos os *Hypnogram.edf* em p e retorna:
-      - preview dos eventos (onset, duration, label)
-      - labels únicas e contagem
-      - duração modal dos eventos (útil pra ver 30s)
+    Read every *Hypnogram.edf* inside ``p`` and return:
+      - preview of events (onset, duration, label)
+      - list of unique labels and their counts
+      - modal event duration (helps verify 30 s epochs)
     """
     rows = []
     for fpath in sorted(Path(p).glob("*Hypnogram.edf")):
@@ -75,7 +75,7 @@ def fingerprint_psg(rows_psg):
 
 def fingerprint_hyp_by_labelset(rows_hyp):
     """
-    Agrupa Hypnograms por conjunto de labels (útil pra ver variantes de codificação).
+    Group hypnograms by their label sets (useful to inspect annotation variants).
     """
     fp = defaultdict(list)
     for r in rows_hyp:
@@ -85,8 +85,8 @@ def fingerprint_hyp_by_labelset(rows_hyp):
 
 def plot_hypnogram_edf(edf_path, epoch_sec_guess=30):
     """
-    Plot simples (em escada) só pra *um* Hypnogram.edf.
-    Descomente a chamada no main se quiser ver.
+    Simple step plot for a single *Hypnogram.edf*.
+    Uncomment the call in ``__main__`` to visualise.
     """
     import matplotlib.pyplot as plt
 
@@ -111,8 +111,8 @@ def plot_hypnogram_edf(edf_path, epoch_sec_guess=30):
     plt.figure(figsize=(10, 3))
     plt.step(t, y, where='post')
     plt.yticks([1,2,3,4,5], ['N3','N2','N1','W','R'])
-    plt.xlabel("Tempo (s)")
-    plt.ylabel("Estágio")
+    plt.xlabel("Time (s)")
+    plt.ylabel("Stage")
     plt.title(Path(edf_path).name)
     plt.tight_layout()
     plt.show()
@@ -126,31 +126,31 @@ if __name__ == "__main__":
         rows_psg = scan_dir_psg(p_cassette) + scan_dir_psg(p_telemetry)
         fingerprints_psg = fingerprint_psg(rows_psg)
 
-        print("\n=== PSG: Esquemas únicos (labels+fs) ===")
+        print("\n=== PSG: Unique schemas (labels + sampling frequency) ===")
         for i, (k, files) in enumerate(fingerprints_psg.items(), 1):
             schema = json.loads(k)
-            print(f"\n[{i}] {len(files)} arquivos")
+            print(f"\n[{i}] {len(files)} files")
             print("labels:", schema["labels"])
             print("fs:", schema["sfreqs"])
-            print("exemplos:", files[:5])
+            print("examples:", files[:5])
 
         rows_hyp = scan_dir_hyp(p_cassette) + scan_dir_hyp(p_telemetry)
 
-        print("\n=== HYP: Preview por arquivo ===")
+        print("\n=== HYP: File previews ===")
         for r in rows_hyp:
-            print(f"\n- {r['file']} | eventos={r['n_events']} | duração={r['duration_s']}s | modal_dur={r['duration_modal_s']}s")
-            print("  labels únicas:", r["labels_unique"])
+            print(f"\n- {r['file']} | events={r['n_events']} | duration={r['duration_s']}s | modal_dur={r['duration_modal_s']}s")
+            print("  unique labels:", r["labels_unique"])
             if r["preview"]:
-                print("  preview (primeiros eventos):")
+                print("  preview (first events):")
                 for ev in r["preview"]:
                     print(f"    t={ev['onset_s']:>8.1f}s  dur={ev['duration_s']:>6.1f}s  label={ev['label']}")
 
         fp_hyp = fingerprint_hyp_by_labelset(rows_hyp)
-        print("\n=== HYP: Conjuntos de labels únicos (fingerprint de anotações) ===")
+        print("\n=== HYP: Unique label sets (annotation fingerprint) ===")
         for i, (k, files) in enumerate(fp_hyp.items(), 1):
             labels = json.loads(k)
-            print(f"\n[{i}] {len(files)} arquivos | labels: {labels}")
-            print("exemplos:", files[:5])
+            print(f"\n[{i}] {len(files)} files | labels: {labels}")
+            print("examples:", files[:5])
 
     except Exception as e:
         print(f"Error: {e}")

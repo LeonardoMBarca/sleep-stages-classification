@@ -43,6 +43,18 @@ from xgboost import XGBClassifier
 BASE_PATH = Path(__file__).resolve().parents[2]
 FINAL_MODELS_DIR = BASE_PATH / "final-models"
 DATASET_ROOT = BASE_PATH / "datalake" / "data-for-model"
+DATASET_CONFIG = {
+    "cassette": {
+        "label": "Sleep Cassette",
+        "test_file": "test_sleep_cassette.parquet",
+        "fallback_file": "sleep-cassette.parquet",
+    },
+    "telemetry": {
+        "label": "Sleep Telemetry",
+        "test_file": "test_sleep_telemetry.parquet",
+        "fallback_file": "sleep-telemetry.parquet",
+    },
+}
 class ResidualBlock(torch.nn.Module):
     def __init__(self, dim: int, expansion: float, dropout: float) -> None:
         super().__init__()
@@ -92,11 +104,23 @@ def load_json(path: Path) -> List[str]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def load_dataset() -> pd.DataFrame:
-    test_path = DATASET_ROOT / "test" / "test_sleep_cassette.parquet"
+def load_dataset(dataset: str) -> pd.DataFrame:
+    config = DATASET_CONFIG.get(dataset)
+    if config is None:
+        raise ValueError(f"Unsupported dataset '{dataset}'")
+    test_path = DATASET_ROOT / "test" / config["test_file"]
     if not test_path.exists():
-        raise FileNotFoundError(f"Test parquet not found at {test_path}")
-    df_test = pd.read_parquet(test_path, engine="fastparquet")
+        fallback = config.get("fallback_file")
+        if not fallback:
+            raise FileNotFoundError(f"Test parquet not found at {test_path}")
+        fallback_path = DATASET_ROOT / fallback
+        if not fallback_path.exists():
+            raise FileNotFoundError(
+                f"Neither test parquet ({test_path}) nor fallback ({fallback_path}) exist for dataset '{dataset}'"
+            )
+        df_test = pd.read_parquet(fallback_path, engine="fastparquet")
+    else:
+        df_test = pd.read_parquet(test_path, engine="fastparquet")
     df_test = df_test.copy()
     df_test["sex"] = df_test["sex"].map({"F": 0.0, "M": 1.0}).astype(np.float32)
     df_test = df_test.reset_index(drop=True)
@@ -161,7 +185,7 @@ def load_mlp(path: Path):
     return model
 
 
-def load_models_and_predictions():
+def load_models_and_predictions(dataset: str):
     if not FINAL_MODELS_DIR.exists():
         raise FileNotFoundError("final-models directory not found. Run save_final_models.py first.")
 
@@ -177,7 +201,7 @@ def load_models_and_predictions():
     stage_labels = load_json(stages_path)
     stage_to_id = {stage: idx for idx, stage in enumerate(stage_labels)}
 
-    df_test = load_dataset()
+    df_test = load_dataset(dataset)
     y_test = df_test["stage"].map(stage_to_id).to_numpy(dtype=np.int64)
     X_test = scaler.transform(df_test[feature_order]).astype(np.float32)
 
@@ -239,7 +263,7 @@ def inference(entry: ModelEntry, X_test: np.ndarray, feature_order: List[str] | 
 
 def select_simulation_positions(df_test: pd.DataFrame) -> List[int]:
     df_sorted = df_test.assign(_pos=np.arange(len(df_test))).sort_values(["subject_id", "night_id", "epoch_idx"])
-    # Retorna todos os índices ordenados para que a simulação percorra o conjunto completo de teste.
+    # Return every ordered index so the simulation can iterate through the full test split.
     return df_sorted["_pos"].tolist()
 
 
@@ -291,36 +315,50 @@ MODEL_FILE_MAP = {
 }
 
 STATE_LOCK = threading.Lock()
-STATE: Dict[str, object] = {
-    "ready": False,
-    "error": None,
-    "models": None,
-    "stages": None,
-    "frames": None,
-    "model_order": None,
+STATE: Dict[str, Dict[str, object]] = {
+    dataset: {
+        "ready": False,
+        "error": None,
+        "models": None,
+        "stages": None,
+        "frames": None,
+        "model_order": None,
+    }
+    for dataset in DATASET_CONFIG
 }
 
 
+def normalise_dataset(dataset: str) -> str:
+    key = dataset.lower()
+    if key not in DATASET_CONFIG:
+        raise HTTPException(status_code=400, detail=f"Unknown dataset '{dataset}'")
+    return key
+
+
 def _bootstrap_models() -> None:
-    try:
-        models, stages, frames, model_order = load_models_and_predictions()
-        with STATE_LOCK:
-            STATE["models"] = models
-            STATE["stages"] = stages
-            STATE["frames"] = frames
-            STATE["model_order"] = model_order
-            STATE["error"] = None
-            STATE["ready"] = True
-    except Exception as exc:  # pragma: no cover - defensive
-        with STATE_LOCK:
-            STATE["error"] = str(exc)
-            STATE["ready"] = False
+    for dataset in DATASET_CONFIG:
+        try:
+            models, stages, frames, model_order = load_models_and_predictions(dataset)
+            with STATE_LOCK:
+                ds_state = STATE[dataset]
+                ds_state["models"] = models
+                ds_state["stages"] = stages
+                ds_state["frames"] = frames
+                ds_state["model_order"] = model_order
+                ds_state["error"] = None
+                ds_state["ready"] = True
+        except Exception as exc:  # pragma: no cover - defensive
+            print(f"Failed to bootstrap dataset '{dataset}': {exc}")
+            with STATE_LOCK:
+                ds_state = STATE[dataset]
+                ds_state["error"] = str(exc)
+                ds_state["ready"] = False
 
 
 
 app = FastAPI(title="Sleep Stage Classification Dashboard")
 
-# Serve arquivos estáticos (html, css, js)
+# Serve static assets (HTML, CSS, JS)
 STATIC_DIR = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
@@ -337,12 +375,14 @@ async def index():
 
 
 @app.get("/api/models")
-async def list_models():
+async def list_models(dataset: str = Query("cassette")):
+    dataset_key = normalise_dataset(dataset)
     with STATE_LOCK:
-        ready = STATE["ready"]
-        error = STATE["error"]
-        models = STATE["models"]
-        stages = STATE["stages"]
+        ds_state = STATE[dataset_key]
+        ready = ds_state["ready"]
+        error = ds_state["error"]
+        models = ds_state["models"]
+        stages = ds_state["stages"]
 
     if not ready:
         status = 500 if error else 202
@@ -363,16 +403,24 @@ async def list_models():
                 "confusion_matrix": entry.confusion,
             }
         )
-    return {"status": "ready", "stages": stages_list, "models": payload}
+    return {
+        "status": "ready",
+        "dataset": dataset_key,
+        "dataset_label": DATASET_CONFIG[dataset_key]["label"],
+        "stages": stages_list,
+        "models": payload,
+    }
 
 
 @app.get("/api/simulation")
-async def simulation():
+async def simulation(dataset: str = Query("cassette")):
+    dataset_key = normalise_dataset(dataset)
     with STATE_LOCK:
-        ready = STATE["ready"]
-        error = STATE["error"]
-        frames = STATE["frames"]
-        model_order = STATE["model_order"]
+        ds_state = STATE[dataset_key]
+        ready = ds_state["ready"]
+        error = ds_state["error"]
+        frames = ds_state["frames"]
+        model_order = ds_state["model_order"]
 
     if not ready:
         status = 500 if error else 202
@@ -381,17 +429,21 @@ async def simulation():
 
     return {
         "status": "ready",
+        "dataset": dataset_key,
+        "dataset_label": DATASET_CONFIG[dataset_key]["label"],
         "models": cast(List[Dict[str, str]], model_order),
         "frames": cast(List[Dict[str, object]], frames),
     }
 
 @app.get("/api/probabilities")
-async def get_probabilities(model: str = Query(...)):
+async def get_probabilities(model: str = Query(...), dataset: str = Query("cassette")):
+    dataset_key = normalise_dataset(dataset)
     with STATE_LOCK:
-        ready = STATE["ready"]
-        error = STATE["error"]
-        models = STATE["models"]
-        stages = STATE["stages"]
+        ds_state = STATE[dataset_key]
+        ready = ds_state["ready"]
+        error = ds_state["error"]
+        models = ds_state["models"]
+        stages = ds_state["stages"]
     if not ready:
         status = 500 if error else 202
         payload = {"status": "error", "detail": error} if error else {"status": "loading"}
@@ -400,15 +452,15 @@ async def get_probabilities(model: str = Query(...)):
     stages_list = cast(List[str], stages)
     entry = models_dict.get(model)
     if not entry or not hasattr(entry.model, "predict_proba"):
-        return JSONResponse({"status": "error", "detail": "Modelo não encontrado ou não suporta probabilidades."}, status_code=400)
-    # Recalcular X_test para garantir alinhamento
+        return JSONResponse({"status": "error", "detail": "Model not found or does not expose probabilities."}, status_code=400)
+    # Recompute X_test to guarantee alignment
     scaler_path = FINAL_MODELS_DIR / "scaler.pkl"
     features_path = FINAL_MODELS_DIR / "feature_order.json"
     stages_path = FINAL_MODELS_DIR / "stage_mapping.json"
     scaler = joblib.load(scaler_path)
     feature_order = load_json(features_path)
     stage_labels = load_json(stages_path)
-    df_test = load_dataset()
+    df_test = load_dataset(dataset_key)
     y_test = df_test["stage"].map({stage: idx for idx, stage in enumerate(stage_labels)}).to_numpy(dtype=np.int64)
     X_test = scaler.transform(df_test[feature_order]).astype(np.float32)
     if entry.name == "mlp":
@@ -422,7 +474,9 @@ async def get_probabilities(model: str = Query(...)):
         proba = entry.model.predict_proba(X_test)
     return {
         "status": "ready",
+        "dataset": dataset_key,
+        "dataset_label": DATASET_CONFIG[dataset_key]["label"],
         "y_true": y_test.tolist(),
         "proba": proba.tolist(),
-        "stages": stages_list
+        "stages": stages_list,
     }

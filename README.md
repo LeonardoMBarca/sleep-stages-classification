@@ -4,24 +4,38 @@
 
 ---
 
+## Architheture
+
+<img src="diagram.png" alt="Sleep Stages Classification Architecture">
+
+---
+
 ## Table of Contents
-1. [Overview](#overview)
-2. [Pipeline Architecture](#pipeline-architecture)
-3. [Quick Start](#quick-start)
-4. [Interactive Dashboard](#interactive-dashboard)
-5. [Model Leaderboard](#model-leaderboard)
-6. [Documentation Map](#documentation-map)
-7. [Repository Layout](#repository-layout)
-8. [Dependencies & Environments](#dependencies--environments)
-9. [Design Decisions](#design-decisions)
-10. [Troubleshooting](#troubleshooting)
-11. [License](#license)
+- [Sleep Stages Classification](#sleep-stages-classification)
+  - [Architheture](#architheture)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [Pipeline Architecture](#pipeline-architecture)
+  - [Quick Start](#quick-start)
+    - [1. Prepare the environment](#1-prepare-the-environment)
+    - [2. Download raw Sleep-EDFx files](#2-download-raw-sleep-edfx-files)
+    - [3. Build processed feature layers](#3-build-processed-feature-layers)
+    - [4. Train and export models](#4-train-and-export-models)
+    - [5. Run the dashboard](#5-run-the-dashboard)
+  - [Interactive Dashboard](#interactive-dashboard)
+  - [Model Leaderboard](#model-leaderboard)
+  - [Documentation Map](#documentation-map)
+  - [Repository Layout](#repository-layout)
+  - [Dependencies \& Environments](#dependencies--environments)
+  - [Design Decisions](#design-decisions)
+  - [Troubleshooting](#troubleshooting)
+  - [License](#license)
 
 ---
 
 ## Overview
 
-Sleep Stages Classification wraps the complete experimentation loop around Sleep-EDFx polysomnography data. The project is opinionated around:
+Sleep Stages Classification wraps the complete experimentation loop around Sleep-EDFx polysomnography data sourced from the [PhysioNet Sleep-EDFx 1.0.0 collection](https://www.physionet.org/content/sleep-edfx/1.0.0/#files-panel). The project is opinionated around:
 
 - resilient acquisition of raw EDF + hypnogram files with hashing and resume support,
 - high-throughput feature extraction and subject-aware splitting that avoids leakage,
@@ -114,6 +128,7 @@ Open <http://127.0.0.1:8000>. The simulation replays every epoch of the held-out
 
 The dashboard concentrates model comparison and qualitative inspection:
 
+- **Dataset selector** exposes mirrored views for Sleep Cassette and Sleep Telemetry, updating every metric and simulation in lockstep.
 - **KPI cards & confusion matrix** updated per-model via dropdown selectors.
 - **Model performance overview** with aligned metric tables and bar charts.
 - **Classification report explorer** for per-stage precision/recall/F1/support across models.
@@ -196,7 +211,7 @@ Per-stage metrics remain available through the dashboard classification report s
 | Out-of-memory during LightGBM/XGBoost | Lower `n_estimators`, shrink `num_leaves`/`max_depth`, or run on a machine with more RAM. |
 | Inconsistent scikit-learn pickle warning | Re-run `save_final_models.py` using the currently installed scikit-learn to regenerate artefacts. |
 | Dashboard shows "Simulation data unavailable" | Rebuild models (`python -m src.model_training.save_final_models --force`) and restart the interface so the cached frames are refreshed. |
-| Simulation too long | Use the **Parar** button in the dashboard controls; playback state resets and can be resumed later. |
+| Simulation too long | Use the **Stop** button in the dashboard controls; playback state resets and can be resumed later. |
 | Slow MLP training | Enable CUDA, reduce `epochs`, or decrease `hidden_dim` in the notebook configuration. |
 
 ## License

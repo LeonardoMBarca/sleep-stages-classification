@@ -1,6 +1,6 @@
-// Utilitário para calcular ROC/AUC multiclasses
+// Utility to compute multiclass ROC/AUC
 function computeRocAuc(yTrue, proba, stages) {
-	// Para cada classe, calcula FPR, TPR e AUC
+	// For each class compute FPR, TPR and AUC
 	function auc(fpr, tpr) {
 		let area = 0;
 		for (let i = 1; i < fpr.length; i++) {
@@ -10,10 +10,10 @@ function computeRocAuc(yTrue, proba, stages) {
 	}
 	const results = [];
 	for (let c = 0; c < stages.length; c++) {
-		// Binariza
+		// Binarise labels for one-vs-rest
 		const yBin = yTrue.map(y => y === c ? 1 : 0);
 		const scores = proba.map(row => row[c]);
-		// Ordena por score desc
+		// Sort by score descending
 		const sorted = scores.map((s, i) => [s, yBin[i]]).sort((a, b) => b[0] - a[0]);
 		let tp = 0, fp = 0, fn = yBin.reduce((a, b) => a + b, 0), tn = yBin.length - fn;
 		const tpr = [0], fpr = [0];
@@ -32,11 +32,11 @@ function computeRocAuc(yTrue, proba, stages) {
 	return results;
 }
 
-// Renderiza histograma de probabilidades
+// Render probability histogram
 function renderProbaHistogram(yTrue, proba, stages) {
 	const ctx = document.getElementById('probaHistogramChart');
 	if (!ctx) return;
-	// Para cada classe, pega todas as probabilidades preditas
+	// Collect predicted probabilities for each class
 	const data = stages.map((stage, i) => proba.map(row => row[i]));
 	const bins = Array.from({length: 10}, (_, i) => i/10);
 	const datasets = data.map((probs, i) => {
@@ -60,13 +60,13 @@ function renderProbaHistogram(yTrue, proba, stages) {
 		},
 		options: {
 			responsive: true,
-			plugins: { legend: { position: 'top' }, title: { display: true, text: 'Distribuição das Probabilidades por Classe' } },
+			plugins: { legend: { position: 'top' }, title: { display: true, text: 'Probability Distribution by Class' } },
 			scales: { x: { stacked: true }, y: { stacked: true } }
 		}
 	});
 }
 
-// Renderiza curva ROC/AUC
+// Render ROC/AUC curve
 function renderRocCurve(yTrue, proba, stages) {
 	const ctx = document.getElementById('rocCurveChart');
 	const aucDiv = document.getElementById('aucScores');
@@ -85,14 +85,14 @@ function renderRocCurve(yTrue, proba, stages) {
 		data: { datasets },
 		options: {
 			responsive: true,
-			plugins: { legend: { position: 'top' }, title: { display: true, text: 'Curva ROC por Classe' } },
+			plugins: { legend: { position: 'top' }, title: { display: true, text: 'ROC Curve by Class' } },
 			scales: { x: { min: 0, max: 1, title: { display: true, text: 'FPR' } }, y: { min: 0, max: 1, title: { display: true, text: 'TPR' } } }
 		}
 	});
 	aucDiv.innerHTML = results.map(res => `<span class="badge bg-info me-1">${res.label}: AUC=${res.auc.toFixed(3)}</span>`).join(' ');
 }
 
-// Preenche o seletor de modelos para os gráficos avançados
+// Populate model selector for advanced charts
 function renderProbaModelSelect(models, onChange) {
 	const select = document.getElementById('probaModelSelect');
 	if (!select) return;
@@ -118,26 +118,32 @@ function renderRocModelSelect(models, onChange) {
 	select.onchange = e => onChange(e.target.value);
 }
 
-// Carrega probabilidades e renderiza gráficos
+// Fetch probabilities and render charts
 async function fetchAndRenderProbaAndRoc(modelId) {
-	const probaResp = await fetch(`/api/probabilities?model=${modelId}`);
+	const targetDataset = currentDataset;
+	const probaResp = await fetch(`/api/probabilities?model=${modelId}&dataset=${targetDataset}`);
 	if (!probaResp.ok) return;
-	const { y_true, proba, stages } = await probaResp.json();
+	const payload = await probaResp.json();
+	if (currentDataset !== targetDataset) return;
+	if (payload.dataset_label) {
+		updateDatasetLabels(payload.dataset_label);
+	}
+	const { y_true, proba, stages } = payload;
 	renderProbaHistogram(y_true, proba, stages);
 	renderRocCurve(y_true, proba, stages);
 }
-// Renderiza ranking visual dos modelos
+// Render visual ranking of models
 function renderModelRanking(models) {
 	const container = document.getElementById('model-ranking');
 	if (!container) return;
-	// Encontrar melhores valores
+	// Identify best values
 	const best = {
 		accuracy: Math.max(...models.map(m => m.metrics.accuracy)),
 		macro_f1: Math.max(...models.map(m => m.metrics.macro_f1)),
 		balanced_accuracy: Math.max(...models.map(m => m.metrics.balanced_accuracy)),
 		loss: Math.min(...models.map(m => m.metrics.loss)),
 	};
-	let html = '<table class="table table-sm table-bordered align-middle text-center mb-0"><thead><tr><th>Modelo</th><th>Accuracy</th><th>Macro F1</th><th>Balanced Acc.</th><th>Log Loss</th></tr></thead><tbody>';
+	let html = '<table class="table table-sm table-bordered align-middle text-center mb-0"><thead><tr><th>Model</th><th>Accuracy</th><th>Macro F1</th><th>Balanced Acc.</th><th>Log Loss</th></tr></thead><tbody>';
 	models.forEach(m => {
 		html += `<tr>`;
 		html += `<td><b>${m.name}</b></td>`;
@@ -151,13 +157,13 @@ function renderModelRanking(models) {
 	container.innerHTML = html;
 }
 
-// Renderiza tabela detalhada do classification report
+// Render detailed classification report table
 function renderClassificationReport(models, stages, selectedModelId) {
 	const container = document.getElementById('classification-report-table');
 	if (!container) return;
 	const model = models.find(m => m.id === selectedModelId) || models[0];
 	if (!model || !model.classification_report) return;
-	let html = '<table class="table table-sm table-bordered align-middle text-center mb-0"><thead><tr><th>Classe</th><th>Precision</th><th>Recall</th><th>F1-score</th><th>Support</th></tr></thead><tbody>';
+	let html = '<table class="table table-sm table-bordered align-middle text-center mb-0"><thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1-score</th><th>Support</th></tr></thead><tbody>';
 	stages.forEach(stage => {
 		const stats = model.classification_report[stage];
 		html += `<tr><td>${stage}</td>`;
@@ -170,7 +176,7 @@ function renderClassificationReport(models, stages, selectedModelId) {
 	container.innerHTML = html;
 }
 
-// Preenche o seletor de modelos para classification report
+// Populate model selector for the classification report
 function renderClassificationModelSelect(models, onChange) {
 	const select = document.getElementById('classificationModelSelect');
 	if (!select) return;
@@ -183,7 +189,7 @@ function renderClassificationModelSelect(models, onChange) {
 	});
 	select.onchange = e => onChange(e.target.value);
 }
-	// Atualiza os cards de KPIs com métricas do modelo selecionado
+	// Update KPI cards with metrics from the selected model
 	function renderKPI(models, selectedModelId) {
 		const model = models.find(m => m.id === selectedModelId) || models[0];
 		if (!model) return;
@@ -195,14 +201,14 @@ function renderClassificationModelSelect(models, onChange) {
 	const confusionModelSelect = document.getElementById('confusionModelSelect');
 	const confusionMatrixChartCanvas = document.getElementById('confusionMatrixChart');
 	let confusionMatrixChart = null;
-	// Renderiza matriz de confusão como tabela estilizada
+	// Render confusion matrix as a styled table
 	function renderConfusionMatrix(models, stages, selectedModelId) {
 		const tableContainer = document.getElementById('confusionMatrixTable');
 		if (!tableContainer) return;
 		const model = models.find(m => m.id === selectedModelId) || models[0];
 		if (!model || !model.confusion_matrix) return;
 		const matrix = model.confusion_matrix;
-		// Encontrar o maior valor para normalizar as cores
+		// Determine the highest value to normalise cell colours
 		const maxVal = Math.max(...matrix.flat());
 		let html = '<table class="table table-bordered text-center align-middle confusion-matrix-table"><thead><tr><th></th>';
 		stages.forEach(stage => { html += `<th class="bg-light">${stage}</th>`; });
@@ -219,7 +225,7 @@ function renderClassificationModelSelect(models, onChange) {
 		html += '</tbody></table>';
 		tableContainer.innerHTML = html;
 	}
-	// Preenche o seletor de modelos para matriz de confusão
+	// Populate model selector for the confusion matrix
 	function renderConfusionModelSelect(models, onChange) {
 		if (!confusionModelSelect) return;
 		confusionModelSelect.innerHTML = '';
@@ -231,7 +237,7 @@ function renderClassificationModelSelect(models, onChange) {
 		});
 		confusionModelSelect.onchange = e => onChange(e.target.value);
 	}
-// Dashboard JS: renderiza métricas, simulação e controles
+// Dashboard JS: renders metrics, simulation and controls
 
 	document.addEventListener('DOMContentLoaded', function() {
 	const metricsContainer = document.getElementById('metrics');
@@ -239,13 +245,51 @@ function renderClassificationModelSelect(models, onChange) {
 	const metricsBarChartCanvas = document.getElementById('metricsBarChart');
 	const controlsContainer = document.getElementById('controls');
 	const logEl = document.getElementById('log');
+	const datasetTabButtons = document.querySelectorAll('[data-dataset-button]');
+	const datasetLabelElements = document.querySelectorAll('[data-dataset-label]');
+	const datasetNames = { cassette: 'Sleep Cassette', telemetry: 'Sleep Telemetry' };
+	let currentDataset = 'cassette';
+	const activeDatasetButton = document.querySelector('[data-dataset-button].active');
+	if (activeDatasetButton && datasetNames[activeDatasetButton.dataset.dataset]) {
+		currentDataset = activeDatasetButton.dataset.dataset;
+	}
 	let simulationHandle = null;
 	let metricsBarChart = null;
 	let playButton = null;
 	let stopButton = null;
 
+	function updateDatasetLabels(label) {
+		datasetLabelElements.forEach(el => {
+			el.textContent = label;
+		});
+	}
+
+	function setDataset(dataset) {
+		if (!datasetNames[dataset] || dataset === currentDataset) {
+			return;
+		}
+		currentDataset = dataset;
+		datasetTabButtons.forEach(btn => {
+			btn.classList.toggle('active', btn.dataset.dataset === currentDataset);
+		});
+		updateDatasetLabels(datasetNames[currentDataset]);
+		stopSimulation();
+		logEl.innerHTML = '';
+		if (metricsBarChart) {
+			metricsBarChart.destroy();
+			metricsBarChart = null;
+		}
+		if (metricsTableContainer) {
+			metricsTableContainer.innerHTML = '<div class="text-center text-muted py-3">Loading...</div>';
+		}
+		if (controlsContainer) {
+			controlsContainer.innerHTML = '';
+		}
+		fetchModels();
+	}
+
 	function renderMetrics(models) {
-		// Render tabela
+		// Render table
 		let html = '<table class="table table-striped table-bordered align-middle"><thead><tr><th>Model</th><th>Accuracy</th><th>Balanced Acc.</th><th>Macro F1</th><th>Log Loss</th></tr></thead><tbody>';
 		models.forEach(model => {
 			html += `<tr><td><b>${model.name}</b></td><td>${model.metrics.accuracy.toFixed(3)}</td>`;
@@ -256,7 +300,7 @@ function renderClassificationModelSelect(models, onChange) {
 		html += '</tbody></table>';
 		if (metricsTableContainer) metricsTableContainer.innerHTML = html;
 
-		// Render gráfico de barras
+		// Render bar chart
 		if (metricsBarChartCanvas) {
 			const labels = models.map(m => m.name);
 			const accuracy = models.map(m => m.metrics.accuracy);
@@ -319,34 +363,67 @@ function renderClassificationModelSelect(models, onChange) {
 		controlsContainer.innerHTML = '';
 		playButton = document.createElement('button');
 		playButton.className = 'btn btn-primary me-2';
-		playButton.textContent = 'Iniciar simulação completa';
+		playButton.textContent = 'Start full simulation';
 		playButton.onclick = () => startSimulation();
 		stopButton = document.createElement('button');
 		stopButton.className = 'btn btn-outline-secondary';
-		stopButton.textContent = 'Parar';
+		stopButton.textContent = 'Stop';
 		stopButton.disabled = true;
-		stopButton.onclick = () => stopSimulation('<span class="badge bg-secondary text-dark">Simulação interrompida pelo usuário.</span>');
+		stopButton.onclick = () => {
+			const label = datasetNames[currentDataset] || currentDataset;
+			stopSimulation(`<span class="badge bg-secondary text-dark">Simulation stopped by the user (${label}).</span>`);
+		};
 		controlsContainer.appendChild(playButton);
 		controlsContainer.appendChild(stopButton);
 	}
 
 			async function fetchModels() {
-				const response = await fetch('/api/models');
+				const targetDataset = currentDataset;
+				const label = datasetNames[targetDataset] || targetDataset;
+				if (metricsBarChart) {
+					metricsBarChart.destroy();
+					metricsBarChart = null;
+				}
+				if (metricsTableContainer) {
+					metricsTableContainer.innerHTML = `<div class="text-center text-muted py-3">Loading models for ${label}...</div>`;
+				}
+				if (controlsContainer) {
+					controlsContainer.innerHTML = '';
+				}
+				let response;
+				try {
+					response = await fetch(`/api/models?dataset=${targetDataset}`);
+				} catch (error) {
+					if (metricsTableContainer) {
+						metricsTableContainer.innerHTML = '<div class="alert alert-danger">Failed to reach the models endpoint.</div>';
+					}
+					return;
+				}
+				if (currentDataset !== targetDataset) {
+					return;
+				}
 				if (response.status === 202) {
-				metricsContainer.innerHTML = '<div class="text-center text-muted py-3">Carregando modelos…</div>';
-				controlsContainer.innerHTML = '';
+					if (metricsTableContainer) {
+						metricsTableContainer.innerHTML = `<div class="text-center text-muted py-3">Loading models for ${label}...</div>`;
+					}
 					setTimeout(fetchModels, 2000);
 					return;
 				}
 				if (!response.ok) {
-					metricsContainer.innerHTML = `<div class="alert alert-danger">Erro ao carregar modelos (status ${response.status}).</div>`;
-					controlsContainer.innerHTML = '';
+					if (metricsTableContainer) {
+						metricsTableContainer.innerHTML = `<div class="alert alert-danger">Failed to load models for ${label} (status ${response.status}).</div>`;
+					}
 					return;
 				}
 				const payload = await response.json();
+				if (currentDataset !== targetDataset) {
+					return;
+				}
+				const resolvedLabel = payload.dataset_label || label;
+				updateDatasetLabels(resolvedLabel);
 				renderMetrics(payload.models);
 				setupControls();
-				// KPIs e Confusion matrix
+				// KPIs and confusion matrix
 				let selectedModelId = payload.models[0]?.id;
 				renderKPI(payload.models, selectedModelId);
 				renderConfusionModelSelect(payload.models, (modelId) => {
@@ -354,15 +431,15 @@ function renderClassificationModelSelect(models, onChange) {
 					renderKPI(payload.models, modelId);
 				});
 				renderConfusionMatrix(payload.models, payload.stages, selectedModelId);
-				// Ranking visual dos modelos
+				// Visual ranking of models
 				renderModelRanking(payload.models);
-				// Classification report detalhado
+				// Detailed classification report
 				renderClassificationModelSelect(payload.models, (modelId) => {
 					renderClassificationReport(payload.models, payload.stages, modelId);
 				});
 				renderClassificationReport(payload.models, payload.stages, selectedModelId);
 
-				// Gráficos avançados: histogramas e ROC/AUC
+				// Advanced charts: histograms and ROC/AUC
 				renderProbaModelSelect(payload.models, (modelId) => {
 					fetchAndRenderProbaAndRoc(modelId);
 					renderRocModelSelect(payload.models, (id) => fetchAndRenderProbaAndRoc(id));
@@ -390,37 +467,50 @@ function renderClassificationModelSelect(models, onChange) {
 			}
 			setSimulationRunning(true);
 			logEl.innerHTML = '';
-			appendLog('<span class="badge bg-primary">Iniciando simulação completa...</span>', '', true);
+			const targetDataset = currentDataset;
+			const datasetLabel = datasetNames[targetDataset] || targetDataset;
+			appendLog(`<span class="badge bg-primary">Starting full simulation (${datasetLabel})...</span>`, '', true);
 			let response;
 			try {
-				response = await fetch('/api/simulation');
+				response = await fetch(`/api/simulation?dataset=${targetDataset}`);
 			} catch (error) {
-				appendLog('<span class="badge bg-danger">Erro de conexão ao iniciar a simulação.</span>', 'incorrect', true);
+				appendLog('<span class="badge bg-danger">Connection error while starting the simulation.</span>', 'incorrect', true);
+				setSimulationRunning(false);
+				return;
+			}
+			if (currentDataset !== targetDataset) {
 				setSimulationRunning(false);
 				return;
 			}
 			if (response.status === 202) {
-				appendLog('<span class="badge bg-warning text-dark">Modelos ainda carregando. Aguarde um momento.</span>', 'incorrect', true);
+				appendLog(`<span class="badge bg-warning text-dark">Models for ${datasetLabel} are still loading. Please wait a moment.</span>`, 'incorrect', true);
 				setSimulationRunning(false);
 				return;
 			}
 			if (!response.ok) {
-				appendLog(`<span class="badge bg-danger">Erro ao carregar dados da simulação (status ${response.status}).</span>`, 'incorrect', true);
+				appendLog(`<span class="badge bg-danger">Failed to load simulation data for ${datasetLabel} (status ${response.status}).</span>`, 'incorrect', true);
 				setSimulationRunning(false);
 				return;
 			}
 			const payload = await response.json();
+			if (currentDataset !== targetDataset) {
+				setSimulationRunning(false);
+				return;
+			}
+			const resolvedLabel = payload.dataset_label || datasetLabel;
+			updateDatasetLabels(resolvedLabel);
 			const frames = payload.frames;
 			const models = payload.models;
+			const simulationLabel = resolvedLabel;
 			if (!Array.isArray(frames) || frames.length === 0) {
-				appendLog('<span class="badge bg-warning text-dark">Nenhum dado disponível para simulação.</span>', 'incorrect', true);
+				appendLog(`<span class="badge bg-warning text-dark">No data available for the ${simulationLabel} simulation.</span>`, 'incorrect', true);
 				setSimulationRunning(false);
 				return;
 			}
 			let index = 0;
 			simulationHandle = setInterval(() => {
 				if (index >= frames.length) {
-					appendLog('<span class="badge bg-success">Simulação finalizada.</span>', '', true);
+					appendLog(`<span class="badge bg-success">Simulation finished (${simulationLabel}).</span>`, '', true);
 					clearInterval(simulationHandle);
 					simulationHandle = null;
 					setSimulationRunning(false);
@@ -431,7 +521,7 @@ function renderClassificationModelSelect(models, onChange) {
 					const info = frame.predictions[model.id];
 					const mark = info.correct
 						? '<span class="badge bg-success ms-1"><i class="bi bi-check-circle"></i> OK</span>'
-						: '<span class="badge bg-danger ms-1"><i class="bi bi-x-circle"></i> Erro</span>';
+						: '<span class="badge bg-danger ms-1"><i class="bi bi-x-circle"></i> Error</span>';
 					return `<span class="fw-bold">${model.name}</span>: <span class="text-info">${info.predicted}</span> ${mark}`;
 				});
 				const allCorrect = models.every(model => frame.predictions[model.id].correct);
@@ -459,7 +549,17 @@ function renderClassificationModelSelect(models, onChange) {
 			}
 		}
 
-				fetchModels();
+		datasetTabButtons.forEach(btn => {
+			btn.addEventListener('click', () => {
+				const targetDataset = btn.dataset.dataset;
+				if (targetDataset) {
+					setDataset(targetDataset);
+				}
+			});
+		});
 
-				// Removido código de navegação por abas
+		updateDatasetLabels(datasetNames[currentDataset]);
+		fetchModels();
+
+		// Tab navigation code removed
 });

@@ -1,87 +1,69 @@
+# Baseline: Sleep Stage Classification with Logistic Regression
 
-# Linha Base: Classificação do Sono com Regressão Logística
+## Introduction
+This notebook establishes a baseline for multi-class sleep-stage classification. It demonstrates how the data are loaded, pre-processed, modelled with multinomial logistic regression, and evaluated on validation and test splits.
 
-## 📄 Introdução
-Este projeto estabelece uma linha de base (baseline) para a classificação dos estágios do sono (stage). O fluxo de trabalho demonstra o carregamento dos dados, o pré-processamento, a aplicação do modelo de Regressão Logística, e a avaliação detalhada da performance nos conjuntos de validação e teste.
+## Dependencies
+The workflow relies on standard Python data science libraries:
+- pandas
+- numpy
+- seaborn
+- matplotlib
+- scikit-learn components (LabelEncoder, StandardScaler, SimpleImputer, LogisticRegression, classification_report, confusion_matrix)
 
-## 🛠️ Tecnologias e Dependências
-O projeto utiliza bibliotecas padrão de ciência de dados e Machine Learning, incluindo:
-- `pandas`
-- `numpy`
-- `seaborn`
-- `matplotlib.pyplot`
-- Componentes do `scikit-learn`:
-  - `LabelEncoder`
-  - `StandardScaler`
-  - `SimpleImputer`
-  - `LogisticRegression`
-  - `classification_report`
-  - `confusion_matrix`
+## Data
+Training, validation, and test partitions are loaded from Parquet files stored under `datalake/data-for-model`. The script inspects:
+- set dimensions
+- class distribution for the `stage` label
+- data types
+- missing values
 
-## 📂 Dados
-Os dados de treino, validação e teste são carregados a partir de arquivos Parquet localizados no caminho `base_dir / "datalake" / "data-for-model"`. O script verifica:
-- Dimensões de cada conjunto de dados
-- Distribuição da variável alvo (`stage`)
-- Tipos de dados
-- Contagem de valores nulos
+## Modelling Pipeline
 
----
+### 1. Pre-processing
+- **Feature selection**: Remove label (`stage`) and identifier columns (`subject_id`, `night_id`, `sex`, `age`) from the feature matrices.
+- **Label encoding**: Convert categorical stages into integers with `LabelEncoder`, keeping track of the mapping (e.g., N1, N2, N3, REM, W).
+- **Scaling**: Fit a `StandardScaler` on the training features and reuse it for validation and test sets. Shapes and summary statistics are printed after scaling.
 
-## ⚙️ Pipeline de Modelagem
+### 2. Handling missing values
+- Apply `SimpleImputer(strategy="mean")` to each scaled split to replace any remaining NaN values.
 
-### 1. Pré-processamento
-- **Separação de Features**: As colunas alvo (`stage`) e irrelevantes (`subject_id`, `night_id`, `sex`, `age`) são removidas dos conjuntos de features (`X`).
-- **Codificação da Variável Alvo**: A variável alvo categórica (`stage`) é codificada em valores numéricos (`y_train_enc`, etc.) usando `LabelEncoder`. O script imprime as classes codificadas (e.g., N1, N2, N3, REM, W).
-- **Normalização das Features**: As features são escalonadas usando `StandardScaler`, resultando em `X_train_scaled`, `X_val_scaled` e `X_test_scaled`. É realizada uma verificação do shape e um resumo estatístico das features normalizadas.
-
-### 2. Tratamento de NaNs
-- **Imputação**: Após a normalização, o `SimpleImputer` é utilizado com a estratégia `"mean"` para substituir quaisquer valores nulos (NaNs) remanescentes nas features escalonadas.
-
-### 3. Treinamento
-- **Modelo**: `LogisticRegression`
-- **Configuração**:
+### 3. Training
+- Estimator: `LogisticRegression`
+- Key parameters:
   - `multi_class="multinomial"`
   - `class_weight="balanced"`
   - `random_state=42`
   - `max_iter=1000`
-- **Treinamento**: O modelo é ajustado utilizando os dados de treino imputados e escalonados (`X_train_scaled`) e a variável alvo codificada (`y_train_enc`).
+- The model is fitted on the imputed training matrix with the encoded labels.
 
----
+## Evaluation
+Performance is computed with `classification_report` and `confusion_matrix`, using the original stage labels in the output tables.
 
-## 📊 Avaliação do Modelo
+### Validation split
+- Accuracy: 72%
+- Macro F1-score: 0.66
 
-A performance é medida através do `classification_report` e da `confusion_matrix`, utilizando os labels originais das classes.
+| Class | Precision | Recall | F1-score | Support |
+|-------|-----------|--------|----------|---------|
+| N1    | 0.32      | 0.53   | 0.40     | 4215    |
+| N2    | 0.89      | 0.60   | 0.72     | 15066   |
+| N3    | 0.50      | 0.85   | 0.63     | 2524    |
+| REM   | 0.60      | 0.81   | 0.69     | 5456    |
+| W     | 0.93      | 0.84   | 0.88     | 15120   |
 
-### 🔹 Conjunto de Validação
-- **Acurácia**: 72%
-- **Macro F1-Score**: 0.66
+### Test split
+- Accuracy: 72%
+- Macro F1-score: 0.66
 
-| Classe | Precision | Recall | F1-Score | Suporte |
-|--------|-----------|--------|----------|---------|
-| N1     | 0.32      | 0.53   | 0.40     | 4215    |
-| N2     | 0.89      | 0.60   | 0.72     | 15066   |
-| N3     | 0.50      | 0.85   | 0.63     | 2524    |
-| REM    | 0.60      | 0.81   | 0.69     | 5456    |
-| W      | 0.93      | 0.84   | 0.88     | 15120   |
+## Generated plots
+The notebook produces several figures from the evaluation metrics:
+- Per-class metric bar chart (`classification_metrics.png`) comparing precision, recall, and F1 across stages.
+- Validation confusion matrix heatmap.
+- Side-by-side bar chart comparing validation vs test precision, recall, and F1.
+- Summary bar chart for accuracy and macro F1 on validation and test splits.
 
-### 🔹 Conjunto de Teste (Baseline)
-- **Acurácia**: 72%
-- **Macro F1-Score**: 0.66
-
----
-
-## 📈 Visualizações Geradas
-
-O script gera diversos gráficos para visualizar o desempenho do modelo, utilizando as métricas extraídas dos relatórios de classificação:
-
-- **Métricas por Classe**: Gráfico de barras (`classification_metrics.png`) comparando Precision, Recall e F1-Score para cada classe de sono.
-- **Matriz de Confusão (Validação)**: Mapa de calor (`sns.heatmap`) da matriz de confusão do conjunto de validação.
-- **Comparação Validação x Teste**: Gráfico de barras comparando Precision, Recall e F1-Score entre os conjuntos de validação e teste.
-- **Resumo de Performance**: Gráfico de barras comparando Acurácia e Macro F1-Score para os conjuntos de Validação e Teste.
-
----
-
-## 📌 Conclusões
-- O modelo baseline demonstra bom desempenho nas classes de sono **W** (vigília), **REM** e **N3** (sono de ondas lentas), conforme indicado pelos altos valores de F1-Score e Recall.
-- As classes **N1** e **N2** apresentam maior dificuldade de distinção para o modelo, o que pode ser esperado devido à sua semelhança fisiológica.
-- O desempenho do modelo é consistente entre os conjuntos de Validação e Teste, com Acurácia e Macro F1-Score de 72% e 0.66, respectivamente.
+## Conclusions
+- The baseline performs well on wake (W), REM, and deep sleep (N3), where both recall and F1-score remain high.
+- Light sleep stages N1 and N2 remain more challenging to separate, matching expectations given their physiological similarity.
+- Results are consistent between validation and test sets (accuracy 72%, macro F1 0.66), indicating the baseline is stable for subsequent comparisons.
