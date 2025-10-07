@@ -217,7 +217,3 @@ Per-stage metrics remain available through the dashboard classification report s
 ## License
 
 Distributed under the MIT License. See [LICENSE](LICENSE) for details.
-
----
-
-Contributions and experimentation ideas (new features, models, metrics, or visualisations) are very welcome.
